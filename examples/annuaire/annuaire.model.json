@@ -1,0 +1,24 @@
+{
+  "formatVersion": "0.1",
+  "packages": [
+    {
+      "name": "annuaire",
+      "classes": [
+        {
+          "name": "Annuaire",
+          "references": [
+            { "name": "personnes", "type": "Personne", "upperBound": -1 }
+          ]
+        },
+        {
+          "name": "Personne",
+          "attributes": [
+            { "name": "nom", "type": "String", "lowerBound": 1 },
+            { "name": "prenom", "type": "String" },
+            { "name": "date_naissance", "type": "Date" }
+          ]
+        }
+      ]
+    }
+  ]
+}

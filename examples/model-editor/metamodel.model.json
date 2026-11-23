@@ -1,0 +1,113 @@
+{
+  "formatVersion": "0.1",
+  "packages": [
+    {
+      "name": "ortelia",
+      "classes": [
+        {
+          "name": "Model",
+          "attributes": [
+            { "name": "formatVersion", "type": "String", "lowerBound": 1 }
+          ],
+          "references": [
+            { "name": "packages", "type": "Package", "upperBound": -1 }
+          ]
+        },
+        {
+          "name": "Package",
+          "attributes": [
+            { "name": "name", "type": "Identifier", "lowerBound": 1, "identifier": true }
+          ],
+          "references": [
+            { "name": "packages", "type": "Package", "upperBound": -1 },
+            { "name": "classes", "type": "Class", "upperBound": -1 },
+            { "name": "enums", "type": "Enum", "upperBound": -1 },
+            { "name": "dataTypes", "type": "DataType", "upperBound": -1 }
+          ]
+        },
+        {
+          "name": "Class",
+          "attributes": [
+            { "name": "name", "type": "Identifier", "lowerBound": 1, "identifier": true },
+            { "name": "superClass", "type": "Identifier", "refersTo": "Class" },
+            { "name": "abstract", "type": "Boolean", "defaultValue": "false" }
+          ],
+          "references": [
+            { "name": "attributes", "type": "Attribute", "upperBound": -1 },
+            { "name": "references", "type": "Reference", "upperBound": -1 },
+            { "name": "constraints", "type": "Constraint", "upperBound": -1 }
+          ]
+        },
+        {
+          "name": "Feature",
+          "abstract": true,
+          "attributes": [
+            { "name": "name", "type": "Identifier", "lowerBound": 1 },
+            { "name": "lowerBound", "type": "Int", "defaultValue": "0" },
+            { "name": "upperBound", "type": "Int", "defaultValue": "1" }
+          ],
+          "constraints": [
+            {
+              "name": "bounds",
+              "severity": "ERROR",
+              "expression": "self.upperBound == -1 || self.lowerBound <= self.upperBound",
+              "message": "La borne inférieure dépasse la borne supérieure."
+            }
+          ]
+        },
+        {
+          "name": "Attribute",
+          "superClass": "Feature",
+          "attributes": [
+            { "name": "type", "type": "Identifier", "lowerBound": 1, "refersTo": "DataType" },
+            { "name": "defaultValue", "type": "String" },
+            { "name": "unit", "type": "String" },
+            { "name": "identifier", "type": "Boolean", "defaultValue": "false" },
+            { "name": "refersTo", "type": "Identifier", "refersTo": "Class" }
+          ]
+        },
+        {
+          "name": "Reference",
+          "superClass": "Feature",
+          "attributes": [
+            { "name": "type", "type": "Identifier", "lowerBound": 1, "refersTo": "Class" }
+          ]
+        },
+        {
+          "name": "DataType",
+          "attributes": [
+            { "name": "name", "type": "Identifier", "lowerBound": 1, "identifier": true },
+            { "name": "baseType", "type": "Identifier", "refersTo": "DataType" },
+            { "name": "pattern", "type": "String" },
+            { "name": "min", "type": "Float" },
+            { "name": "max", "type": "Float" },
+            { "name": "minLength", "type": "Int" },
+            { "name": "maxLength", "type": "Int" }
+          ]
+        },
+        {
+          "name": "Enum",
+          "superClass": "DataType",
+          "attributes": [
+            { "name": "literals", "type": "Identifier", "upperBound": -1 }
+          ]
+        },
+        {
+          "name": "Constraint",
+          "attributes": [
+            { "name": "name", "type": "Identifier", "lowerBound": 1 },
+            { "name": "severity", "type": "Severity", "defaultValue": "ERROR" },
+            { "name": "expression", "type": "String", "lowerBound": 1 },
+            { "name": "message", "type": "String" }
+          ]
+        }
+      ],
+      "enums": [
+        { "name": "Severity", "baseType": "String", "literals": ["ERROR", "WARNING", "INFO"] }
+      ],
+      "dataTypes": [
+        { "name": "Identifier", "baseType": "String", "pattern": "^[A-Za-z_][A-Za-z0-9_]*$" }
+      ]
+    }
+  ]
+}

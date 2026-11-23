@@ -1,0 +1,73 @@
+{
+  "formatVersion": "0.2",
+  "id": "annuaire",
+  "name": "Annuaire des personnes",
+  "languages": ["fr", "en"],
+
+  "model": {
+    "files": ["annuaire.model.json"],
+    "root": "Annuaire"
+  },
+
+  "sources": [
+    {
+      "id": "personnes",
+      "format": "json",
+      "file": "personnes.json",
+      "target": "/personnes"
+    }
+  ],
+
+  "labels": [
+    {
+      "lang": "fr",
+      "entries": [
+        { "key": "Personne", "text": "Personne" },
+        { "key": "Personne.nom", "text": "Nom" },
+        { "key": "Personne.prenom", "text": "Prénom" },
+        { "key": "Personne.date_naissance", "text": "Date de naissance" }
+      ]
+    },
+    {
+      "lang": "en",
+      "entries": [
+        { "key": "Personne", "text": "Person" },
+        { "key": "Personne.nom", "text": "Last name" },
+        { "key": "Personne.prenom", "text": "First name" },
+        { "key": "Personne.date_naissance", "text": "Date of birth" }
+      ]
+    }
+  ],
+
+  "presentation": [
+    {
+      "class": "Annuaire",
+      "tree": { "children": ["personnes"] }
+    },
+    {
+      "class": "Personne",
+      "label": { "text": "{prenom} {nom}" },
+      "table": {
+        "columns": [
+          { "path": "nom", "width": 120, "align": "left" },
+          { "path": "prenom", "width": 120, "align": "left" },
+          { "path": "date_naissance", "width": 150, "align": "center", "format": "dd/MM/yyyy" }
+        ],
+        "sort": [{ "path": "nom", "order": "asc" }]
+      }
+    }
+  ],
+
+  "window": {
+    "title": "Annuaire",
+    "width": 800,
+    "height": 600,
+    "menu": [],
+    "content": {
+      "_type_": "View",
+      "id": "liste-personnes",
+      "widget": "table",
+      "data": "/personnes"
+    }
+  }
+}

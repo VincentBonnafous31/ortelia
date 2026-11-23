@@ -1,0 +1,14 @@
+# Rust build output (normally kept in WSL via CARGO_TARGET_DIR, see CLAUDE.md)
+/target/
+
+# Private design notes: never published
+/docs/cadrage-prive/
+
+# Local Claude Code settings
+/.claude/settings.local.json
+
+# Editors and OS
+*.swp
+*~
+.DS_Store
+Thumbs.db

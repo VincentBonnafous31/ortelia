@@ -1,0 +1,12 @@
+[
+  { "nom": "Dupont", "prenom": "Marie", "date_naissance": "1985-03-12" },
+  { "nom": "Martin", "prenom": "Lucas", "date_naissance": "1992-07-24" },
+  { "nom": "Bernard", "prenom": "Camille", "date_naissance": "1978-11-05" },
+  { "nom": "Petit", "prenom": "Hugo", "date_naissance": "2001-01-30" },
+  { "nom": "Robert", "prenom": "Léa", "date_naissance": "1996-09-17" },
+  { "nom": "Richard", "prenom": "Antoine", "date_naissance": "1969-06-02" },
+  { "nom": "Durand", "prenom": "Chloé", "date_naissance": "1988-12-21" },
+  { "nom": "Moreau", "prenom": "Julien", "date_naissance": "1974-04-08" },
+  { "nom": "Lefebvre", "prenom": "Inès", "date_naissance": "2003-08-14" },
+  { "nom": "Garcia", "prenom": "Théo", "date_naissance": "1999-02-27" }
+]
