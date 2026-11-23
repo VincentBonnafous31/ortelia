@@ -49,14 +49,15 @@ Toujours consulter **Context7** (serveur MCP déclaré dans `.mcp.json`) avant d
 
 ## Méthode : OpenSpec
 
-- Développement piloté par les spécifications avec **OpenSpec**, à installer à l'incrément 0 : `npm install -g @fission-ai/openspec`, puis `openspec init`.
-- `openspec/config.yaml` déclarera le français pour les artefacts, en gardant en anglais les titres structurels (`### Requirement:`, `#### Scenario:`) et les mots-clés `SHALL` / `MUST`.
-- Cycle d'un incrément : `/opsx:explore` (réfléchir), `/opsx:propose <nom>` (proposition, spécifications, conception, tâches, à faire valider), `/opsx:apply` (réaliser), `/opsx:archive` (fusionner dans `openspec/specs/`).
+- Développement piloté par les spécifications avec **OpenSpec** 2.x (`npm install -g @fission-ai/openspec`), initialisé par `openspec init --tools claude --language "French (fr-FR)" --scope project --profile core`. Les skills sont dans `.claude/skills/` (copie dans `.agents/skills/`) ; `openspec update` les régénère.
+- `openspec/config.yaml` déclare le français pour les artefacts, en gardant en anglais les titres structurels (`### Requirement:`, `#### Scenario:`) et les mots-clés `SHALL` / `MUST`. Il porte aussi le contexte du projet et des règles par artefact.
+- Cycle d'un incrément : `/openspec-explore` (réfléchir), `/openspec-propose <nom>` (proposition, spécifications, conception, tâches, à faire valider), `/openspec-apply-change` (réaliser), `/openspec-archive-change` (fusionner dans `openspec/specs/`). Autres skills : `/openspec-update-change` (modifier les artefacts d'un changement), `/openspec-sync-specs` (fusionner sans archiver).
 - Après une modification non triviale, et avant de la considérer terminée : `/code-review` sur le diff, puis `/simplify`, puis recompiler.
 
 ## Git
 
-- Branche `main`. Pas encore de dépôt distant : GitHub est prévu, avec CI GitHub Actions (Linux et Windows).
+- Branche `main`, dépôt public `https://github.com/VincentBonnafous31/ortelia` (remote `origin`). CI GitHub Actions (Linux et Windows) prévue à l'incrément 0.
+- `gh` (GitHub CLI) est installé et connecté.
 - Ne committer ou pousser que sur demande.
 
 ## Conventions egui 0.37

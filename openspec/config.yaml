@@ -1,0 +1,47 @@
+schema: spec-driven
+
+context: |
+  Language: French (fr-FR)
+  All artifacts must be written in French (fr-FR).
+  Keep OpenSpec structural headings and SHALL/MUST keywords in English.
+
+  Projet : Ortelia, outil desktop (Windows, Linux) pour construire sans code des
+  applications de visualisation et d'édition de données structurées. Un métamodèle
+  inspiré d'Ecore décrit les données ; app.json décrit les sources, la disposition des
+  fenêtres et les vues ; le mode run exécute l'application ; le code spécifique passe
+  par des plugins natifs. Priorités : rapidité et faible consommation mémoire
+  (fichiers jusqu'à environ 500 Mo, tables jusqu'à 100 000 lignes).
+
+  Références : CLAUDE.md (règles, conventions egui, commandes de compilation),
+  docs/feuille-de-route.md (incréments et critères « Fini quand »),
+  docs/architecture-couches.md (couches, décisions D25 à D27), examples/ (applications jalons).
+
+  Pile : Rust (workspace Cargo), egui 0.37 et eframe pour l'interface. Consulter
+  Context7 avant d'utiliser l'API d'une bibliothèque : egui change à chaque version mineure.
+
+  Couches : ortelia-model <- ortelia-config / ortelia-expr <- ortelia-service <-
+  ortelia-presentation <- ortelia-ui-* <- ortelia. Aucune crate sous ortelia-ui-* ne
+  dépend d'egui. Toute la logique d'affichage est dans ortelia-presentation et se teste
+  sans interface.
+
+  Formats de configuration : descriptibles par le métamodèle (contenance, références
+  par nom, polymorphisme par _type_, pas de dictionnaires).
+
+  Code, identifiants et commentaires du code en anglais. Le porteur du projet débute en
+  Rust et connaît bien C, C++ et Java : Rust idiomatique mais lisible, sans généricité
+  ni macros superflues, commenté là où ce n'est pas évident.
+
+rules:
+  proposal:
+    - Rattacher le changement à un incrément de docs/feuille-de-route.md et reprendre ses critères « Fini quand ».
+    - Dire ce qui est hors périmètre.
+    - "Les artefacts sont versionnés et publics. Ne jamais renvoyer à docs/cadrage-prive/ (non versionné) ; reformuler les décisions utiles."
+  specs:
+    - Chaque scénario doit pouvoir être vérifié par un test automatisé ; pour la logique d'affichage, par un test de ortelia-presentation sans interface.
+  design:
+    - Respecter la règle des couches et indiquer la crate de chaque élément.
+    - Expliquer les choix Rust non évidents, par analogie avec C++ ou Java quand c'est utile.
+    - Donner les versions des bibliothèques utilisées, après vérification de leur API dans Context7.
+  tasks:
+    - Des tâches courtes ; chacune laisse le workspace compilable et les tests au vert.
+    - Terminer par /code-review sur le diff, /simplify, puis compilation, clippy et tests.
