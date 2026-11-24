@@ -26,15 +26,22 @@ Le développement avance par **trois applications jalons**, chacune construite a
 - Workspace Cargo en couches (voir `architecture-couches.md`) : `ortelia-model`, `ortelia-expr`, `ortelia-config`, `ortelia-service`, `ortelia-presentation`, `ortelia-ui-egui`, exécutable `ortelia`. La règle de dépendance est vérifiée par la CI.
 - CI GitHub Actions Linux + Windows : format, lint, tests, binaires.
 - Journalisation dans un fichier.
-- Essais techniques S1 (stockage dynamique, 500 Mo), S2 (Rhai ou CEL), S3 (`egui_tiles` avec egui 0.37).
+- Test manuel de la version Windows dans le bac à sable Windows (`tools/sandbox/`).
 
-**Fini quand** : CI verte sur les deux OS ; mesures de S1 consignées ; choix de S2 et S3 tranchés.
+**Fini quand** : CI verte sur les deux OS ; l'exécutable Windows de la CI s'ouvre dans le bac à sable.
+
+Les essais techniques S1 à S3 sont reportés à l'incrément 1, où le stockage dynamique est réellement codé.
 
 ---
 
 ## Jalon A — Application 1 « Annuaire des personnes »
 
 ### Incrément 1 — Afficher
+
+Essais techniques, en début d'incrément, avant de bâtir dessus :
+- S1 : stockage dynamique, avec un fichier d'environ 500 Mo (temps de chargement, mémoire, accès aux attributs) ;
+- S2 : langage d'expressions, Rhai ou CEL (utilisé à l'incrément 2) ;
+- S3 : `egui_tiles` avec egui 0.37, pour les containers.
 
 - Métamodèle intégré : packages, classes avec héritage simple, attributs, contenance, énumérés, types de données.
 - Lecture des fichiers `*.model.json` et de `app.json`, avec erreurs claires (clés inconnues, références introuvables).
@@ -45,7 +52,7 @@ Le développement avance par **trois applications jalons**, chacune construite a
 - État de session séparé de `app.json`.
 - Essai des tests par captures d'images (egui_kittest, features `wgpu` et `snapshot`), avec la table comme premier widget dont le rendu vaut d'être figé : choisir entre une machine macOS de la CI (vrai GPU) et le rendu logiciel lavapipe sous Linux. C'est le niveau 3 de la stratégie de tests de l'interface (`CLAUDE.md`) ; les niveaux 1, 2 et 4 existent depuis l'incrément 0.
 
-**Fini quand** : `app.json` écrit à la main affiche les personnes ; 50 000 personnes défilent de façon fluide ; la disposition est retrouvée au redémarrage.
+**Fini quand** : mesures de S1 consignées ; choix de S2 et S3 tranchés ; `app.json` écrit à la main affiche les personnes ; 50 000 personnes défilent de façon fluide ; la disposition est retrouvée au redémarrage.
 
 ### Incrément 2 — Éditer
 
