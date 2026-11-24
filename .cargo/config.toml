@@ -3,3 +3,8 @@
 # Rust equivalent of a Gradle task defined in buildSrc: written in Rust, it works the same
 # on Linux and Windows, without bash.
 xtask = "run --quiet --package xtask --"
+
+[target.x86_64-pc-windows-msvc]
+# Link the C runtime statically (like /MT in C++): ortelia.exe then runs on a fresh Windows
+# without the Visual C++ Redistributable (no VCRUNTIME140.dll needed).
+rustflags = ["-C", "target-feature=+crt-static"]
