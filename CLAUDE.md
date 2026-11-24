@@ -10,7 +10,7 @@ Ce fichier guide Claude Code (claude.ai/code) dans ce dépôt.
 
 **Priorités** : rapidité et faible consommation mémoire. Fichiers jusqu'à environ 500 Mo, tables jusqu'à 100 000 lignes.
 
-**État** : incrément 0 en cours. Le socle est posé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale. Les essais techniques S1 à S3 restent à faire.
+**État** : incrément 0 terminé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale, version Windows validée dans le bac à sable. Prochaine étape : incrément 1, qui commence par les essais techniques S1 à S3.
 
 ## Documents
 
