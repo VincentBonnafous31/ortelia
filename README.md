@@ -12,7 +12,8 @@ Ortelia is written in Rust.
 
 The design documents are written in French and live in [`docs/`](docs/):
 
-- [`docs/feuille-de-route.md`](docs/feuille-de-route.md): roadmap (three milestone applications);
+- [`docs/feuille-de-route.md`](docs/feuille-de-route.md): roadmap overview, then one roadmap per milestone application
+  ([people directory](docs/feuille-de-route-annuaire.md), [model editor](docs/feuille-de-route-editeur-modeles.md));
 - [`docs/architecture-couches.md`](docs/architecture-couches.md): layered architecture with an interchangeable UI.
 
 Example applications and data are in [`examples/`](examples/).

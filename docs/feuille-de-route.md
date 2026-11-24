@@ -1,26 +1,34 @@
 # Feuille de route
 
-*2026-11-23. Proposé, à valider.*
+*2026-11-24. Proposé, à valider.*
 
-Le développement avance par **trois applications jalons**, chacune construite avec Ortelia et réutilisant ce que la précédente a apporté. Chaque incrément suit le cycle OpenSpec (proposition → spécifications → conception → tâches → code → tests → archivage), avec des commits git.
+Le développement avance par **applications jalons** : chacune est construite avec Ortelia et réutilise ce que la précédente a apporté. Chaque application a sa propre feuille de route, découpée en incréments courts. Un incrément est un changement OpenSpec (proposition → spécifications → conception → tâches → code → tests → archivage), avec des commits git. Les incréments sont numérotés à la suite d'une application à l'autre.
+
+| Étape | Incréments | Feuille de route | État |
+|---|---|---|---|
+| Socle | 0 | ci-dessous | terminé |
+| Application 1 « Annuaire des personnes » | 1 à 6 | [`feuille-de-route-annuaire.md`](feuille-de-route-annuaire.md) | prochaine étape |
+| Application 2 « Éditeur de modèles » | 7 et 8 | [`feuille-de-route-editeur-modeles.md`](feuille-de-route-editeur-modeles.md) | à venir |
+
+La suite se décidera à la fin de l'application 2. Les pistes connues sont en fin de document.
 
 ---
 
 ## Principe directeur : Ortelia se décrit avec ses propres modèles
 
 - **Le métamodèle est lui-même un modèle Ortelia** (`examples/model-editor/metamodel.model.json`). Un fichier de modèle est donc une donnée comme une autre, et l'application 2 l'édite avec les widgets génériques (arbre, formulaires).
-- **Le format de `app.json` sera lui aussi décrit par un modèle Ortelia.** Le mode design (application 3) réutilisera alors l'arbre et les formulaires de l'application 2 pour éditer la configuration.
+- **Le format de `app.json` sera lui aussi décrit par un modèle Ortelia.** Le mode design réutilisera alors l'arbre et les formulaires de l'application 2 pour éditer la configuration.
 
 **Conséquence dès l'incrément 1** : les fichiers de configuration n'utilisent que ce que le métamodèle sait décrire.
 - Contenance et références par identifiant (noms), comme dans le reste du modèle.
 - Polymorphisme par le champ `_type_` : les containers sont des `View`, `Stack` ou `Split`.
-- Pas de dictionnaires libres : les libellés sont des listes `{ key, text }` par langue (structure proche de votre premier `app.json`).
+- Pas de dictionnaires libres : les libellés sont des listes `{ key, text }` par langue.
 
 `examples/annuaire/app.json` (format 0.2) et `examples/annuaire/annuaire.model.json` appliquent déjà ces règles.
 
 ---
 
-## Incrément 0 — Socle
+## Incrément 0 — Socle (terminé)
 
 - Dépôt GitHub, `openspec init` avec `config.yaml` en français, CLAUDE.md (conventions egui 0.37, procédure WSL2).
 - Workspace Cargo en couches (voir `architecture-couches.md`) : `ortelia-model`, `ortelia-expr`, `ortelia-config`, `ortelia-service`, `ortelia-presentation`, `ortelia-ui-egui`, exécutable `ortelia`. La règle de dépendance est vérifiée par la CI.
@@ -30,95 +38,46 @@ Le développement avance par **trois applications jalons**, chacune construite a
 
 **Fini quand** : CI verte sur les deux OS ; l'exécutable Windows de la CI s'ouvre dans le bac à sable.
 
-Les essais techniques S1 à S3 sont reportés à l'incrément 1, où le stockage dynamique est réellement codé.
+Terminé le 2026-11-24 (changement OpenSpec `socle-workspace`, archivé). Les essais techniques S1 à S3 ont lieu au début des incréments qui en ont besoin : S1 à l'incrément 1, S3 au 3, S2 au 6.
 
 ---
 
-## Jalon A — Application 1 « Annuaire des personnes »
+## Après l'application 2 : pistes
 
-### Incrément 1 — Afficher
+L'ordre et le contenu se décideront à la fin de l'application 2.
 
-Essais techniques, en début d'incrément, avant de bâtir dessus :
-- S1 : stockage dynamique, avec un fichier d'environ 500 Mo (temps de chargement, mémoire, accès aux attributs) ;
-- S2 : langage d'expressions, Rhai ou CEL (utilisé à l'incrément 2) ;
-- S3 : `egui_tiles` avec egui 0.37, pour les containers.
+### Mode design
 
-- Métamodèle intégré : packages, classes avec héritage simple, attributs, contenance, énumérés, types de données.
-- Lecture des fichiers `*.model.json` et de `app.json`, avec erreurs claires (clés inconnues, références introuvables).
-- Lecture des données JSON dans le stockage dynamique (`target`, `_type_`).
-- Fenêtre et containers (`View`, `Stack`, `Split`).
-- Widget table : colonnes, tri multiple, filtre, largeur et ordre des colonnes, format des dates.
-- Libellés FR/EN, choix de la langue.
-- État de session séparé de `app.json`.
-- Essai des tests par captures d'images (egui_kittest, features `wgpu` et `snapshot`), avec la table comme premier widget dont le rendu vaut d'être figé : choisir entre une machine macOS de la CI (vrai GPU) et le rendu logiciel lavapipe sous Linux. C'est le niveau 3 de la stratégie de tests de l'interface (`CLAUDE.md`) ; les niveaux 1, 2 et 4 existent depuis l'incrément 0.
+Objectif : **reconstruire entièrement l'application 1 sans éditer de JSON**. C'est le cœur du produit.
 
-**Fini quand** : mesures de S1 consignées ; choix de S2 et S3 tranchés ; `app.json` écrit à la main affiche les personnes ; 50 000 personnes défilent de façon fluide ; la disposition est retrouvée au redémarrage.
-
-### Incrément 2 — Éditer
-
-- Formulaire **déduit du modèle** (widgets simples : `text`, `textArea`, `number`, `checkbox`, `combo`, `radio`, `date`, `dateTime`), mise en page en grille.
-- Broker de sélection : la table pilote un panneau de propriétés.
-- Édition sur copie avec Appliquer / Annuler (Q11), sauvegarde JSON.
-- Langage d'expressions et contraintes simples, avec leurs sévérités.
-
-**Fini quand** : on sélectionne une personne, on la modifie, on applique, on enregistre ; une contrainte non respectée s'affiche avec sa sévérité.
-
----
-
-## Jalon B — Application 2 « Éditeur de modèles »
-
-Ses données sont des fichiers de modèle ; son modèle est le métamodèle. Son `app.json` reste écrit à la main (ou généré par Claude).
-
-### Incrément 3 — Arbre et actions
-
-- Widget arbre (nœuds et libellés issus de la présentation par classe).
-- Actions de menu contextuel : créer un package, une classe, un énuméré, un type de donnée, un attribut, une référence ; supprimer. Les actions possibles se déduisent du modèle (contenances de l'objet sélectionné).
-- Panneau de propriétés : le formulaire généré suit la **classe réelle** de l'objet sélectionné.
-- Nouveau / Ouvrir / Enregistrer / Enregistrer sous : le fichier de données est choisi par l'utilisateur, et non plus fixé dans `app.json`.
-
-**Fini quand** : on crée de zéro le modèle de l'annuaire, et on l'enregistre.
-
-### Incrément 4 — Références et validation
-
-- Widgets de référence par identifiant : `refCombo` (type d'un attribut, super-classe), `refPicker`.
-- `valueList` (littéraux d'un énuméré), `optional`.
-- Contraintes du métamodèle : identifiants valides, bornes cohérentes, unicité des noms, références introuvables après une suppression.
-
-**Fini quand** : un modèle édité dans l'application 2 est directement utilisé par l'application 1 (boucle complète).
-
----
-
-## Jalon C — Application 3 « Mode design »
-
-Objectif : **reconstruire entièrement l'application 1 sans éditer de JSON**.
-
-### Incrément 5 — Éditer la configuration
-
-- Bascule design / run sans redémarrage ; les actions de design n'apparaissent qu'en mode design.
-- Modèle du format de `app.json` (`app.model.json`).
-- Arbre de la configuration + formulaires générés : sources, libellés, présentation par classe, colonnes. C'est la réutilisation directe de l'application 2.
-- Éditeur de modèles de l'application 2 intégré au mode design.
-- Aperçu immédiat : l'application se redessine à chaque modification de la configuration.
-
-### Incrément 6 — Disposition à la souris
-
-- Clic droit sur la fenêtre vivante : ajouter une vue, une pile d'onglets, un slider ; scinder ; supprimer.
-- Configuration d'une vue : type de widget, chemin des données, action de chargement (lecture d'un fichier JSON).
-- Enregistrement de `app.json`.
+- Éditer la configuration :
+  - bascule design / run sans redémarrage ; les actions de design n'apparaissent qu'en mode design ;
+  - modèle du format de `app.json` (`app.model.json`) ;
+  - arbre de la configuration et formulaires générés : sources, libellés, présentation par classe, colonnes. C'est la réutilisation directe de l'application 2 ;
+  - éditeur de modèles de l'application 2 intégré au mode design ;
+  - aperçu immédiat : l'application se redessine à chaque modification de la configuration.
+- Disposition à la souris :
+  - clic droit sur la fenêtre vivante : ajouter une vue, une pile d'onglets, un slider ; scinder ; supprimer ;
+  - configuration d'une vue : type de widget, chemin des données, action de chargement (lecture d'un fichier JSON) ;
+  - enregistrement de `app.json`.
 
 **Fini quand** : partant d'une application vide, on obtient en mode design un `app.json` équivalent à celui de l'application 1.
 
----
+### Globe 3D et carte : une bibliothèque séparée
 
-## Ensuite (ordre à confirmer au fil de l'eau)
+Le globe 3D et la carte 2D (un seul moteur pour les deux) seront développés comme une **bibliothèque indépendante, dans son propre dépôt**, à la manière de NASA World Wind Java : utilisable par toute application Rust, et par Ortelia comme une dépendance ordinaire. Ortelia n'y ajoute que son intégration : le view-model de la carte (couches, objets issus du modèle, sélection synchronisée avec les autres vues) et sa configuration dans `app.json`.
 
-| Inc. | Contenu |
-|---|---|
-| 7 | Plugins natifs + SDK + modèle de projet de plugin ; source REST (essai S4 avant) |
-| 8 | Widget graphique (courbes, axe temporel, seuils, marqueurs, sélection synchronisée) |
-| 9 | Carte 2D/3D, un seul moteur (essai S5 avant) |
-| 10 | Gantt |
-| — | Vues ouvertes à la volée : un onglet par objet (Q13) ; pourrait remonter dans le jalon B |
-| — | Imports XML/XSD, CSV, JSON Schema → modèle ; déduction d'un modèle à partir de données |
-| — | Rafraîchissement périodique d'une source (Q12) |
-| — | Plusieurs fenêtres du système d'exploitation |
+- **Une réimplémentation, pas un portage** : on reprend les concepts de World Wind (couches, tuiles, niveaux de détail), pas son code. Sa conception Java / OpenGL ne se transpose pas en Rust / wgpu, et un portage serait une œuvre dérivée, soumise à sa licence.
+- **Des couches, comme dans Ortelia** : un cœur sans interface ni GPU (géodésie, caméra, tuiles et caches, sélection, préparation de la scène), un moteur de rendu wgpu, et une intégration egui mince. La présentation d'Ortelia ne dépend que du cœur ; seule `ortelia-ui-egui` utilise le rendu et le widget.
+- **Des versions liées** : pour dessiner dans la fenêtre egui, le moteur doit utiliser la même version de wgpu qu'eframe, et l'intégration egui suit l'API d'egui, qui change à chaque version mineure. Les montées de version se font en même temps dans les deux dépôts.
+- **Essai S5 en premier** : un globe minimal (imagerie, relief, objets et polygones drapés au sol, sélection ; images par seconde et mémoire), après examen de l'existant en Rust, par exemple `walkers` (carte en tuiles pour egui) ou `galileo` (moteur cartographique).
+
+### Autres pistes
+
+- Plugins natifs, SDK et modèle de projet de plugin ; source REST (essai S4 avant).
+- Widget graphique : courbes, axe temporel, seuils, marqueurs, sélection synchronisée.
+- Gantt.
+- Vues ouvertes à la volée : un onglet par objet. Pourrait remonter dans l'application 2.
+- Imports XML/XSD, CSV, JSON Schema → modèle ; export d'un modèle en JSON Schema ; déduction d'un modèle à partir de données.
+- Rafraîchissement périodique d'une source.
+- Plusieurs fenêtres du système d'exploitation.
