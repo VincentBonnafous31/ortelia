@@ -75,7 +75,7 @@ egui décrit chaque widget dans un arbre d'accessibilité (AccessKit) : l'interf
 | 2. egui_kittest sans rendu | l'interface affiche le view-model ; les clics et les touches produisent les bonnes intentions | tests de `ortelia-ui-egui` (`Harness::new_eframe`, `get_by_label`) |
 | 3. Captures d'images | le rendu réel, comparé à une image de référence | pas encore : essai à l'incrément 1 (macOS en CI ou lavapipe) |
 | 4. Test de fumée de l'exécutable | la vraie fenêtre s'ouvre et dessine sans erreur | `crates/ortelia/tests/smoke.rs` |
-| 5. Test manuel | l'impression générale, la version Windows | WSLg ; bac à sable Windows |
+| 5. Test manuel | l'impression générale, la version Windows | WSLg ; bac à sable Windows (`tools/sandbox/run-sandbox.ps1 <dossier de ortelia.exe>`, vGPU désactivé car il fait planter wgpu) |
 
 - Toute logique se teste dans `ortelia-presentation`.
 - Chaque widget de `ortelia-ui-egui` a ses tests egui_kittest : affichage du view-model et, dès qu'il y a des intentions, traduction des interactions en intentions.
