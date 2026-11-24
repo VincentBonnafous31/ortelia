@@ -1,0 +1,121 @@
+# Checks every change on Linux and Windows, then builds the binaries of both systems.
+# The Windows version is built nowhere else (on the development machine, cargo only runs in WSL2).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A new push on a pull request cancels the run that became obsolete. Runs on main are never
+# cancelled: each commit of main must get its binaries.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_TERM_COLOR: always
+  # Smaller debug info for the dev and test builds: a smaller cache and faster links (the
+  # wgpu/eframe stack is large), while backtraces keep their file and line numbers.
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+jobs:
+  checks:
+    name: checks (${{ matrix.os }})
+    strategy:
+      # Show the result of both systems even if one fails.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the Rust toolchain of rust-toolchain.toml
+        run: rustup toolchain install
+
+      # Only main saves the cache, so that pull requests do not fill the 10 GB per repository.
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      # The result does not depend on the system.
+      - name: Format
+        if: runner.os == 'Linux'
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace --locked
+
+      - name: Layer rule
+        run: cargo xtask check-layers
+
+      # Software rendering in a virtual screen: Xvfb, lavapipe (Vulkan) and Mesa (OpenGL).
+      # winit loads libxkbcommon-x11 at run time under X11 and panics without it.
+      - name: Install the smoke test packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb mesa-vulkan-drivers libgl1-mesa-dri libegl1 libxkbcommon-x11-0
+
+      - name: Smoke test (Linux, Xvfb)
+        if: runner.os == 'Linux'
+        run: xvfb-run -a cargo test -p ortelia --locked --test smoke -- --ignored
+
+      # Windows runners have a desktop session but no GPU: wgpu should fall back to WARP
+      # (Direct3D 12 software rendering), which is still to be confirmed. Not blocking: a
+      # failure stays visible in the run details without failing the run.
+      - name: Smoke test (Windows, not blocking)
+        if: runner.os == 'Windows'
+        continue-on-error: true
+        run: cargo test -p ortelia --locked --test smoke -- --ignored
+
+  binaries:
+    name: binaries (${{ matrix.os }})
+    needs: checks
+    # Pull requests do not produce binaries.
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            artifact: ortelia-linux-x86_64
+            exe: target/release/ortelia
+          - os: windows-latest
+            artifact: ortelia-windows-x86_64
+            exe: target/release/ortelia.exe
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install the Rust toolchain of rust-toolchain.toml
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build
+        run: cargo build --release --locked -p ortelia
+
+      # A binary that does not start fails the job before its upload.
+      - name: Check that the binary starts
+        shell: bash
+        run: ./${{ matrix.exe }} --version
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact }}
+          path: ${{ matrix.exe }}
+          if-no-files-found: error
+          retention-days: 30

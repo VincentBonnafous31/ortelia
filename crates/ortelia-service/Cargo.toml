@@ -1,0 +1,16 @@
+[package]
+name = "ortelia-service"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+ortelia-model.workspace = true
+ortelia-config.workspace = true
+ortelia-expr.workspace = true
+
+[lints]
+workspace = true

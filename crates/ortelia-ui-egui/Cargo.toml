@@ -1,0 +1,22 @@
+[package]
+name = "ortelia-ui-egui"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+ortelia-presentation.workspace = true
+eframe.workspace = true
+egui.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+# Headless tests of the whole eframe application, through the AccessKit tree (no GPU needed).
+egui_kittest = { workspace = true, features = ["eframe"] }
+tracing-subscriber.workspace = true
+
+[lints]
+workspace = true

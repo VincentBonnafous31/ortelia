@@ -7,7 +7,8 @@ importers or computation algorithms, are added as plugins.
 
 Ortelia is written in Rust.
 
-> **Status:** design phase. No code yet.
+> **Status:** early development (increment 0). The layered Cargo workspace is in place and opens an empty
+> main window; no functional feature yet.
 
 The design documents are written in French and live in [`docs/`](docs/):
 

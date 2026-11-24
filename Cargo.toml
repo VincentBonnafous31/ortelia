@@ -1,0 +1,45 @@
+# Virtual workspace: there is no [package] at the root, only member crates.
+# See docs/architecture-couches.md for the layers and `cargo xtask check-layers` for the check.
+[workspace]
+members = ["crates/*", "xtask"]
+# In a virtual manifest Cargo does not infer the resolver from the edition: it must be written.
+resolver = "3"
+
+# Settings inherited by every crate with `version.workspace = true`, `edition.workspace = true`, etc.
+# All crates share the application version.
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/VincentBonnafous31/ortelia"
+publish = false
+
+# Single place for dependency versions (like Maven's <dependencyManagement>).
+# A crate only writes `name.workspace = true`.
+[workspace.dependencies]
+# Internal crates, by layer.
+ortelia-model = { path = "crates/ortelia-model" }
+ortelia-config = { path = "crates/ortelia-config" }
+ortelia-expr = { path = "crates/ortelia-expr" }
+ortelia-service = { path = "crates/ortelia-service" }
+ortelia-presentation = { path = "crates/ortelia-presentation" }
+ortelia-ui-egui = { path = "crates/ortelia-ui-egui" }
+
+# External crates.
+cargo_metadata = "0.23.1"
+dirs = "6.0.0"
+eframe = "0.37.0"
+egui = "0.37.0"
+egui_kittest = "0.37.0"
+tempfile = "3.27"
+tracing = "0.1.44"
+tracing-appender = "0.2.5"
+tracing-log = "0.2.0"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+
+# Lints inherited with `[lints] workspace = true`.
+[workspace.lints.rust]
+# `deny` rather than `forbid`: the future plugin host will need `unsafe` for the C interface
+# and will allow it locally, in a visible place, with `#![allow(unsafe_code)]`.
+unsafe_code = "deny"

@@ -10,7 +10,7 @@ Ce fichier guide Claude Code (claude.ai/code) dans ce dépôt.
 
 **Priorités** : rapidité et faible consommation mémoire. Fichiers jusqu'à environ 500 Mo, tables jusqu'à 100 000 lignes.
 
-**État** : phase d'affinage, avant l'incrément 0. Il n'y a pas encore de code ni de workspace Cargo.
+**État** : incrément 0 en cours. Le socle est posé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale. Les essais techniques S1 à S3 restent à faire.
 
 ## Documents
 
@@ -23,6 +23,28 @@ Ce fichier guide Claude Code (claude.ai/code) dans ce dépôt.
 
 `docs/cadrage-prive/` contient des notes de conception privées : ne jamais le versionner, ne jamais citer son contenu dans un fichier versionné.
 
+## Workspace Cargo
+
+```
+Cargo.toml              workspace virtuel : versions, dépendances et lints communs
+Cargo.lock              versionné (application)
+rust-toolchain.toml     version de Rust fixée (1.99), avec rustfmt et clippy
+.cargo/config.toml      alias `cargo xtask`
+crates/
+  ortelia-model/        couche 0 : métamodèle, stockage dynamique
+  ortelia-config/       couche 1 : format de app.json
+  ortelia-expr/         couche 1 : expressions
+  ortelia-service/      couche 2 : sources, tâches de fond, validation, plugins
+  ortelia-presentation/ couche 3 : view-models, logique d'affichage
+  ortelia-ui-egui/      couche 4 : dessin egui
+  ortelia/              couche 5 : exécutable (ligne de commande, journalisation)
+xtask/                  outil du dépôt : vérification des couches
+```
+
+- Une crate hérite des réglages communs (`version.workspace = true`, `[lints] workspace = true`…) et déclare ses dépendances par `nom.workspace = true` : les versions ne s'écrivent que dans le `Cargo.toml` racine.
+- `unsafe_code = "deny"` pour tout le workspace : une exception éventuelle s'écrit localement avec `#![allow(unsafe_code)]`.
+- Pour changer de version de Rust : modifier `rust-toolchain.toml` et `rust-version` dans un même commit.
+
 ## Règles
 
 ### Langues
@@ -34,8 +56,45 @@ Ce fichier guide Claude Code (claude.ai/code) dans ce dépôt.
 ### Architecture
 
 - Règle des couches (`docs/architecture-couches.md`) : `ortelia-model` ← `ortelia-config` / `ortelia-expr` ← `ortelia-service` ← `ortelia-presentation` ← `ortelia-ui-*` ← `ortelia`. Aucune crate sous `ortelia-ui-*` ne dépend d'egui ou de GPUI.
+- Vérification : `cargo xtask check-layers` (depuis la racine, dans WSL2 avec `CARGO_TARGET_DIR=~/target/ortelia`, et dans la CI). Code 0 sans violation, 1 sinon. Elle signale :
+  - une dépendance (normale, de développement ou de compilation) vers une crate du workspace de même niveau ou de niveau supérieur ;
+  - une crate d'une couche qui dépend d'un outil (`xtask`) ;
+  - une crate du workspace absente de la table des couches ;
+  - une crate des couches 0 à 3 qui atteint, même indirectement, une bibliothèque d'interface (préfixes `egui`, `eframe`, `epaint`, `winit`, `gpui`), avec le chemin de dépendance.
+- Table des couches : constantes `LAYERS`, `UI_CRATE_PREFIX` et `TOOLS` de `xtask/src/layers.rs`. Niveaux : 0 `ortelia-model` ; 1 `ortelia-config`, `ortelia-expr` ; 2 `ortelia-service` ; 3 `ortelia-presentation` ; 4 `ortelia-ui-*` ; 5 `ortelia`. Une nouvelle crate (`ortelia-geo`, `ortelia-plugin-sdk`…) doit y être ajoutée en même temps qu'au workspace.
 - Toute la logique d'affichage (tri, filtre, formulaires générés, broker, intentions, formats, état de session, mode design) va dans `ortelia-presentation`, testée sans interface.
 - Les formats de configuration doivent être descriptibles par le métamodèle : contenance, références par nom (`refersTo`), polymorphisme par `_type_`, pas de dictionnaires.
+
+### Tests de l'interface
+
+egui décrit chaque widget dans un arbre d'accessibilité (AccessKit) : l'interface se teste dans le processus de test, sans fenêtre ni GPU. Cinq niveaux :
+
+| Niveau | Ce qu'il vérifie | Où |
+|---|---|---|
+| 1. Tests de `ortelia-presentation` | toute la logique d'affichage | tests unitaires, sans interface |
+| 2. egui_kittest sans rendu | l'interface affiche le view-model ; les clics et les touches produisent les bonnes intentions | tests de `ortelia-ui-egui` (`Harness::new_eframe`, `get_by_label`) |
+| 3. Captures d'images | le rendu réel, comparé à une image de référence | pas encore : essai à l'incrément 1 (macOS en CI ou lavapipe) |
+| 4. Test de fumée de l'exécutable | la vraie fenêtre s'ouvre et dessine sans erreur | `crates/ortelia/tests/smoke.rs` |
+| 5. Test manuel | l'impression générale, la version Windows | WSLg ; bac à sable Windows |
+
+- Toute logique se teste dans `ortelia-presentation`.
+- Chaque widget de `ortelia-ui-egui` a ses tests egui_kittest : affichage du view-model et, dès qu'il y a des intentions, traduction des interactions en intentions.
+- Les tests de l'interface ne recalculent rien : ils vérifient ce qui est affiché et ce qui est émis.
+- Test de fumée : marqué `#[ignore]` (il faut un affichage), donc absent de `cargo test`. Le lancer avec `cargo test -p ortelia --test smoke -- --ignored` : dans WSLg en local, sous `xvfb-run -a` dans la CI Linux. Il attend `main window shown` dans le journal (20 s au plus) puis vérifie qu'Ortelia n'y a écrit aucune ligne `ERROR` (les lignes relayées des bibliothèques tierces ne comptent pas).
+- Les tests qui lancent l'exécutable sans argument (`crates/ortelia/tests/startup.rs`) ne tournent que sous Linux, sans affichage : sous Windows, la fenêtre s'ouvrirait vraiment.
+- `tracing` met en cache l'intérêt de chaque point de journalisation : les tests qui vérifient un événement émis par du code que d'autres tests exécutent en parallèle sans subscriber doivent être sérialisés (voir `APP_TESTS` dans `ortelia-ui-egui`).
+
+### Journalisation
+
+- Seul l'exécutable `ortelia` initialise la journalisation (`crates/ortelia/src/logging.rs`) ; les bibliothèques n'utilisent que les macros de `tracing` (`info!`, `warn!`…).
+- Un fichier par jour, `ortelia.<AAAA-MM-JJ>.log` (date UTC), 7 fichiers conservés au plus, horodatages UTC. Dossier :
+  - Linux : `$XDG_STATE_HOME/ortelia/logs` (par défaut `~/.local/state/ortelia/logs`) ;
+  - Windows : `%LOCALAPPDATA%\ortelia\logs` ;
+  - `ORTELIA_LOG_DIR`, si elle est définie et non vide, remplace ce dossier.
+- `ORTELIA_LOG` règle le niveau : `info` par défaut, `debug`, ou par crate (`ortelia_service=trace`, les autres crates restant en `info`). Une valeur invalide est ignorée, avec un avertissement dans le journal.
+- Les avertissements et erreurs des bibliothèques qui passent par la crate `log` (eframe, wgpu…) sont relayés dans le même journal ; leurs messages `info` ne le sont pas.
+- `--version` et `--help` ne journalisent rien. Si le dossier est inutilisable, un avertissement s'affiche sur la sortie d'erreur et l'application continue sans journal fichier. Les paniques sont journalisées au niveau `ERROR`.
+- **Confidentialité** : jamais de valeur de donnée de l'utilisateur dans les journaux (contenu des fichiers chargés, valeurs saisies). Types, identifiants techniques, chemins de fichiers et compteurs sont permis.
 
 ### Style Rust
 
@@ -56,7 +115,12 @@ Toujours consulter **Context7** (serveur MCP déclaré dans `.mcp.json`) avant d
 
 ## Git
 
-- Branche `main`, dépôt public `https://github.com/VincentBonnafous31/ortelia` (remote `origin`). CI GitHub Actions (Linux et Windows) prévue à l'incrément 0.
+- Branche `main`, dépôt public `https://github.com/VincentBonnafous31/ortelia` (remote `origin`).
+- CI GitHub Actions (`.github/workflows/ci.yml`), à chaque poussée sur `main`, à chaque pull request vers `main` et à la demande :
+  - job `checks`, sous Linux et Windows, tout en `--locked` : `cargo fmt --all --check` (Linux), `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo test --workspace --locked`, `cargo xtask check-layers`, puis le test de fumée (Linux sous Xvfb, bloquant ; Windows non bloquant) ;
+  - job `binaries`, hors pull requests : compilation release, `ortelia --version`, puis artefacts `ortelia-linux-x86_64` et `ortelia-windows-x86_64` (30 jours), téléchargeables depuis la page de l'exécution (`gh run download <id>`). C'est la seule source de la version Windows.
+  - Seul `main` enregistre le cache Cargo (`Swatinem/rust-cache`).
+- Avant de pousser, lancer la même séquence en local. Les lints propres à Windows (code réservé à Linux par `#[cfg]`, donc mort sous Windows) se vérifient sans Windows : `rustup target add x86_64-pc-windows-msvc`, puis `cargo clippy --workspace --all-targets --locked --target x86_64-pc-windows-msvc -- -D warnings` (pas d'édition de liens, donc pas besoin des outils MSVC).
 - `gh` (GitHub CLI) est installé et connecté.
 - Ne committer ou pousser que sur demande.
 

@@ -1,0 +1,5 @@
+[alias]
+# `cargo xtask <task>` runs the repository tool (see xtask/). The xtask convention is the
+# Rust equivalent of a Gradle task defined in buildSrc: written in Rust, it works the same
+# on Linux and Windows, without bash.
+xtask = "run --quiet --package xtask --"
