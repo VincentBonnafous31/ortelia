@@ -51,7 +51,7 @@ Toutes les commandes `cargo` se lancent dans WSL2, avec `CARGO_TARGET_DIR=~/targ
   - avec `ORTELIA_LOG_DIR` vers un dossier inexistant : le dossier est créé, et le journal contient la ligne de démarrage `INFO` avec la version ainsi que l'erreur ;
   - avec `XDG_STATE_HOME` vers un dossier temporaire : le journal est dans `<dossier>/ortelia/logs` ;
   - avec `ORTELIA_LOG_DIR` sous un fichier ordinaire : avertissement sur la sortie d'erreur qui cite le chemin, et poursuite du démarrage.
-- [ ] 7.2 Lancer l'application dans WSLg : `timeout 10 ~/target/ortelia/debug/ortelia`. Vérifier : code 124 (elle tournait encore), et, en la lançant sans `timeout`, une fenêtre titrée « Ortelia » qui affiche `Ortelia 0.1.0`. Fermer la fenêtre fait sortir le programme avec le code 0 et écrit la ligne d'arrêt dans le journal.
+- [x] 7.2 Lancer l'application dans WSLg : `timeout 10 ~/target/ortelia/debug/ortelia`. Vérifier : code 124 (elle tournait encore), et, en la lançant sans `timeout`, une fenêtre titrée « Ortelia » qui affiche `Ortelia 0.1.0`. Fermer la fenêtre fait sortir le programme avec le code 0 et écrit la ligne d'arrêt dans le journal.
 - [x] 7.3 Écrire le test de fumée `crates/ortelia/tests/smoke.rs`, marqué `#[ignore]`. Il lance le binaire avec `ORTELIA_LOG_DIR` temporaire, attend `main window shown` dans le journal (20 s au plus), vérifie que le processus tourne encore et que le journal est sans `ERROR`, puis tue le processus. Vérifier :
   - `cargo test -p ortelia --test smoke -- --ignored` passe dans WSLg ;
   - `cargo test --workspace` ne lance pas ce test ;
@@ -67,7 +67,7 @@ Toutes les commandes `cargo` se lancent dans WSL2, avec `CARGO_TARGET_DIR=~/targ
 
   Vérifier : en local, la même séquence de commandes réussit dans WSL2.
 - [x] 8.2 Ajouter le job `binaries` : release, `--version`, artefacts `ortelia-linux-x86_64` et `ortelia-windows-x86_64` ; pas de binaires sur les pull requests. Vérifier : `cargo build --release --locked -p ortelia` puis `ortelia --version` réussissent dans WSL2.
-- [ ] 8.3 Avec l'accord du porteur du projet, pousser sur une branche et ouvrir une pull request. Vérifier : le job `checks` est vert sous Linux et sous Windows, test de fumée Linux compris, et le job `binaries` ne s'exécute pas. Si des paquets système manquent sous Linux, ajouter l'étape `apt-get` et relancer. Si wgpu ne trouve pas d'adaptateur sous Xvfb, essayer `WGPU_BACKEND=gl`. Noter le résultat du test de fumée Windows dans la description de la pull request : s'il est fiable sur plusieurs exécutions, on le rendra bloquant dans un changement ultérieur.
+- [x] 8.3 Avec l'accord du porteur du projet, pousser sur une branche et ouvrir une pull request. Vérifier : le job `checks` est vert sous Linux et sous Windows, test de fumée Linux compris, et le job `binaries` ne s'exécute pas. Si des paquets système manquent sous Linux, ajouter l'étape `apt-get` et relancer. Si wgpu ne trouve pas d'adaptateur sous Xvfb, essayer `WGPU_BACKEND=gl`. Noter le résultat du test de fumée Windows dans la description de la pull request : s'il est fiable sur plusieurs exécutions, on le rendra bloquant dans un changement ultérieur.
 - [x] 8.4 Documenter la CI dans `CLAUDE.md` (ce qu'elle vérifie, où trouver les binaires) et y retirer « CI prévue à l'incrément 0 ». Vérifier : la section Git de `CLAUDE.md` décrit le workflow réel.
 
 ## 9. Vérification finale
