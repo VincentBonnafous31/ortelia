@@ -25,6 +25,7 @@ env:
   CARGO_PROFILE_DEV_DEBUG: line-tables-only
 
 jobs:
+  # tools/check.sh runs the same checks locally: keep both in step.
   checks:
     name: checks (${{ matrix.os }})
     strategy:

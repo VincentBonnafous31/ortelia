@@ -77,7 +77,7 @@ egui décrit chaque widget dans un arbre d'accessibilité (AccessKit) : l'interf
 | 2. egui_kittest sans rendu | l'interface affiche le view-model ; les clics et les touches produisent les bonnes intentions | tests de `ortelia-ui-egui` (`Harness::new_eframe`, `get_by_label`) |
 | 3. Captures d'images | le rendu réel, comparé à une image de référence | pas encore : essai à l'incrément 2 (macOS en CI ou lavapipe) |
 | 4. Test de fumée de l'exécutable | la vraie fenêtre s'ouvre et dessine sans erreur | `crates/ortelia/tests/smoke.rs` |
-| 5. Test manuel | l'impression générale, la version Windows | WSLg ; bac à sable Windows (`tools/sandbox/run-sandbox.ps1 <dossier de ortelia.exe>`, vGPU désactivé car il fait planter wgpu) |
+| 5. Test manuel | l'impression générale, la version Windows | WSLg (`/lancer`) ; bac à sable Windows (`/bac-a-sable`, ou `tools/sandbox/run-sandbox.ps1 <dossier de ortelia.exe>` ; vGPU désactivé car il fait planter wgpu) |
 
 - Toute logique se teste dans `ortelia-presentation`.
 - Chaque widget de `ortelia-ui-egui` a ses tests egui_kittest : affichage du view-model et, dès qu'il y a des intentions, traduction des interactions en intentions.
@@ -113,7 +113,19 @@ Toujours consulter **Context7** (serveur MCP déclaré dans `.mcp.json`) avant d
 - Développement piloté par les spécifications avec **OpenSpec** 2.x (`npm install -g @fission-ai/openspec`), initialisé par `openspec init --tools claude --language "French (fr-FR)" --scope project --profile core`. Les skills sont dans `.claude/skills/` (copie dans `.agents/skills/`) ; `openspec update` les régénère.
 - `openspec/config.yaml` déclare le français pour les artefacts, en gardant en anglais les titres structurels (`### Requirement:`, `#### Scenario:`) et les mots-clés `SHALL` / `MUST`. Il porte aussi le contexte du projet et des règles par artefact.
 - Cycle d'un incrément : `/openspec-explore` (réfléchir), `/openspec-propose <nom>` (proposition, spécifications, conception, tâches, à faire valider), `/openspec-apply-change` (réaliser), `/openspec-archive-change` (fusionner dans `openspec/specs/`). Autres skills : `/openspec-update-change` (modifier les artefacts d'un changement), `/openspec-sync-specs` (fusionner sans archiver).
-- Après une modification non triviale, et avant de la considérer terminée : `/code-review` sur le diff, puis `/simplify`, puis recompiler.
+- Après une modification non triviale, et avant de la considérer terminée : `/code-review` sur le diff, puis `/simplify`, puis `/verifier`.
+
+### Skills du projet
+
+Dans `.claude/skills/`, à côté de ceux d'OpenSpec :
+
+| Skill | Rôle |
+|---|---|
+| `/verifier` | les vérifications de la CI en local (`tools/check.sh`), avec un bilan : avant chaque commit ou push |
+| `/lancer` | compiler et lancer Ortelia, pour le montrer ou pour vérifier qu'il démarre sans erreur (`tools/launch.sh`) |
+| `/bac-a-sable` | tester l'exécutable Windows de la CI dans le bac à sable Windows |
+
+Sous Windows, les deux scripts tournent dans WSL2 : `wsl -- bash -l tools/check.sh`.
 
 ## Git
 
@@ -122,7 +134,7 @@ Toujours consulter **Context7** (serveur MCP déclaré dans `.mcp.json`) avant d
   - job `checks`, sous Linux et Windows, tout en `--locked` : `cargo fmt --all --check` (Linux), `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo test --workspace --locked`, `cargo xtask check-layers`, puis le test de fumée (Linux sous Xvfb, bloquant ; Windows non bloquant) ;
   - job `binaries`, hors pull requests : compilation release, `ortelia --version`, puis artefacts `ortelia-linux-x86_64` et `ortelia-windows-x86_64` (30 jours), téléchargeables depuis la page de l'exécution (`gh run download <id>`). C'est la seule source de la version Windows.
   - Seul `main` enregistre le cache Cargo (`Swatinem/rust-cache`).
-- Avant de pousser, lancer la même séquence en local. Les lints propres à Windows (code réservé à Linux par `#[cfg]`, donc mort sous Windows) se vérifient sans Windows : `rustup target add x86_64-pc-windows-msvc`, puis `cargo clippy --workspace --all-targets --locked --target x86_64-pc-windows-msvc -- -D warnings` (pas d'édition de liens, donc pas besoin des outils MSVC).
+- Avant de pousser, lancer la même séquence en local : `tools/check.sh` (skill `/verifier`). Il vérifie aussi les lints propres à Windows (code réservé à Linux par `#[cfg]`, donc mort sous Windows) par Clippy pour la cible `x86_64-pc-windows-msvc`, sans édition de liens, donc sans les outils MSVC. La cible s'installe une fois : `rustup target add x86_64-pc-windows-msvc`.
 - `gh` (GitHub CLI) est installé et connecté.
 - Ne committer ou pousser que sur demande.
 
