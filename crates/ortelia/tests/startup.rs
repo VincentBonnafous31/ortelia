@@ -3,8 +3,6 @@
 //! The tests never change their own environment (`std::env::set_var` is `unsafe` in edition
 //! 2024, as other threads may read the environment): they pass variables to the child process.
 
-use std::fs;
-use std::path::Path;
 use std::process::Command;
 
 fn ortelia() -> Command {
@@ -14,15 +12,6 @@ fn ortelia() -> Command {
         .env_remove("ORTELIA_LOG_DIR")
         .env_remove("ORTELIA_LOG");
     command
-}
-
-/// Content of all the files of a log directory.
-fn read_logs(dir: &Path) -> String {
-    let mut content = String::new();
-    for entry in fs::read_dir(dir).expect("log directory exists") {
-        content += &fs::read_to_string(entry.unwrap().path()).unwrap();
-    }
-    content
 }
 
 #[test]
@@ -46,6 +35,17 @@ fn version_writes_no_log() {
 #[cfg(target_os = "linux")]
 mod without_display {
     use super::*;
+    use std::fs;
+    use std::path::Path;
+
+    /// Content of all the files of a log directory.
+    fn read_logs(dir: &Path) -> String {
+        let mut content = String::new();
+        for entry in fs::read_dir(dir).expect("log directory exists") {
+            content += &fs::read_to_string(entry.unwrap().path()).unwrap();
+        }
+        content
+    }
 
     fn ortelia_without_display() -> Command {
         let mut command = ortelia();

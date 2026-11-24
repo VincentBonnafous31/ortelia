@@ -120,7 +120,7 @@ Toujours consulter **Context7** (serveur MCP déclaré dans `.mcp.json`) avant d
   - job `checks`, sous Linux et Windows, tout en `--locked` : `cargo fmt --all --check` (Linux), `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo test --workspace --locked`, `cargo xtask check-layers`, puis le test de fumée (Linux sous Xvfb, bloquant ; Windows non bloquant) ;
   - job `binaries`, hors pull requests : compilation release, `ortelia --version`, puis artefacts `ortelia-linux-x86_64` et `ortelia-windows-x86_64` (30 jours), téléchargeables depuis la page de l'exécution (`gh run download <id>`). C'est la seule source de la version Windows.
   - Seul `main` enregistre le cache Cargo (`Swatinem/rust-cache`).
-- Avant de pousser, lancer la même séquence en local.
+- Avant de pousser, lancer la même séquence en local. Les lints propres à Windows (code réservé à Linux par `#[cfg]`, donc mort sous Windows) se vérifient sans Windows : `rustup target add x86_64-pc-windows-msvc`, puis `cargo clippy --workspace --all-targets --locked --target x86_64-pc-windows-msvc -- -D warnings` (pas d'édition de liens, donc pas besoin des outils MSVC).
 - `gh` (GitHub CLI) est installé et connecté.
 - Ne committer ou pousser que sur demande.
 
