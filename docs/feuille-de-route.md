@@ -43,6 +43,7 @@ Le développement avance par **trois applications jalons**, chacune construite a
 - Widget table : colonnes, tri multiple, filtre, largeur et ordre des colonnes, format des dates.
 - Libellés FR/EN, choix de la langue.
 - État de session séparé de `app.json`.
+- Essai des tests par captures d'images (egui_kittest, features `wgpu` et `snapshot`), avec la table comme premier widget dont le rendu vaut d'être figé : choisir entre une machine macOS de la CI (vrai GPU) et le rendu logiciel lavapipe sous Linux. C'est le niveau 3 de la stratégie de tests de l'interface (`CLAUDE.md`) ; les niveaux 1, 2 et 4 existent depuis l'incrément 0.
 
 **Fini quand** : `app.json` écrit à la main affiche les personnes ; 50 000 personnes défilent de façon fluide ; la disposition est retrouvée au redémarrage.
 

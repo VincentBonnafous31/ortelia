@@ -1,0 +1,7 @@
+# Rust version used everywhere (development machine and CI). rustup reads this file and
+# installs the version and components if needed. To move to another Rust version, change
+# `channel` here and `rust-version` in Cargo.toml in the same commit.
+[toolchain]
+channel = "1.99"
+components = ["rustfmt", "clippy"]
+profile = "minimal"
