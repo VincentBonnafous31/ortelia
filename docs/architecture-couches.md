@@ -36,10 +36,10 @@ ortelia  (exécutable)        choisit l'interface (features Cargo, option --ui)
           │
   ortelia-model              métamodèle, stockage dynamique, API de modification, révisions
 
-  ortelia-geo                moteur cartographique sans interface : tuiles, projections,
-                             sélection, préparation de la scène (le rendu est dans ui-*)
   ortelia-plugin-sdk         interface stable pour les plugins (ne dépend que du modèle)
 ```
+
+Le globe 3D et la carte seront une bibliothèque externe, dans son propre dépôt (voir `feuille-de-route.md`) : son cœur sans interface sert la présentation, son rendu wgpu et son widget egui servent `ortelia-ui-egui`.
 
 **Règle** : une couche ne connaît que les couches situées en dessous d'elle. Aucune crate sous `ortelia-ui-*` ne dépend d'egui ou de GPUI.
 
@@ -128,7 +128,7 @@ D'après la documentation consultée (GPUI Kit 0.10, ex-« gpui-component » de 
 
 **Lecture** : GPUI Kit fournit plus de composants prêts à l'emploi (disposition, table, graphiques) ; egui reste nettement plus simple pour le globe 3D, qui est le point le plus risqué du projet. Les deux options sont crédibles : c'est précisément pourquoi la séparation en couches est utile.
 
-Le globe illustre la règle : son moteur (`ortelia-geo` : tuiles, projections, sélection, préparation de la scène) ne dépend d'aucune interface. Seul le rendu final est propre à chacune.
+Le globe illustre la règle. Ce sera une bibliothèque séparée, dont le cœur (tuiles, projections, sélection, préparation de la scène) ne dépend d'aucune interface : seul le rendu final est propre à chacune.
 
 ---
 

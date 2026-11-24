@@ -10,13 +10,15 @@ Ce fichier guide Claude Code (claude.ai/code) dans ce dépôt.
 
 **Priorités** : rapidité et faible consommation mémoire. Fichiers jusqu'à environ 500 Mo, tables jusqu'à 100 000 lignes.
 
-**État** : incrément 0 terminé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale, version Windows validée dans le bac à sable. Prochaine étape : incrément 1, qui commence par les essais techniques S1 à S3.
+**État** : incrément 0 terminé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale, version Windows validée dans le bac à sable. Prochaine étape : incrément 1 (application 1 « Annuaire des personnes »), qui commence par l'essai technique S1.
 
 ## Documents
 
 | Fichier | Contenu |
 |---|---|
-| `docs/feuille-de-route.md` | Incrément 0, puis trois applications jalons : annuaire, éditeur de modèles, mode design |
+| `docs/feuille-de-route.md` | Vue d'ensemble : socle (terminé), applications jalons, pistes après l'application 2 (mode design, globe 3D en bibliothèque séparée…) |
+| `docs/feuille-de-route-annuaire.md` | Application 1 « Annuaire des personnes » : incréments 1 à 6 |
+| `docs/feuille-de-route-editeur-modeles.md` | Application 2 « Éditeur de modèles » : incréments 7 et 8 |
 | `docs/architecture-couches.md` | Couches, couche de présentation sans dépendance UI, interfaces egui / GPUI interchangeables (D25–D27) |
 | `examples/annuaire/` | Application 1 : `app.json` (format 0.2), `annuaire.model.json`, `personnes.json` |
 | `examples/model-editor/metamodel.model.json` | Ébauche du métamodèle décrit avec lui-même (application 2) |
@@ -61,7 +63,7 @@ xtask/                  outil du dépôt : vérification des couches
   - une crate d'une couche qui dépend d'un outil (`xtask`) ;
   - une crate du workspace absente de la table des couches ;
   - une crate des couches 0 à 3 qui atteint, même indirectement, une bibliothèque d'interface (préfixes `egui`, `eframe`, `epaint`, `winit`, `gpui`), avec le chemin de dépendance.
-- Table des couches : constantes `LAYERS`, `UI_CRATE_PREFIX` et `TOOLS` de `xtask/src/layers.rs`. Niveaux : 0 `ortelia-model` ; 1 `ortelia-config`, `ortelia-expr` ; 2 `ortelia-service` ; 3 `ortelia-presentation` ; 4 `ortelia-ui-*` ; 5 `ortelia`. Une nouvelle crate (`ortelia-geo`, `ortelia-plugin-sdk`…) doit y être ajoutée en même temps qu'au workspace.
+- Table des couches : constantes `LAYERS`, `UI_CRATE_PREFIX` et `TOOLS` de `xtask/src/layers.rs`. Niveaux : 0 `ortelia-model` ; 1 `ortelia-config`, `ortelia-expr` ; 2 `ortelia-service` ; 3 `ortelia-presentation` ; 4 `ortelia-ui-*` ; 5 `ortelia`. Une nouvelle crate (`ortelia-plugin-sdk`…) doit y être ajoutée en même temps qu'au workspace.
 - Toute la logique d'affichage (tri, filtre, formulaires générés, broker, intentions, formats, état de session, mode design) va dans `ortelia-presentation`, testée sans interface.
 - Les formats de configuration doivent être descriptibles par le métamodèle : contenance, références par nom (`refersTo`), polymorphisme par `_type_`, pas de dictionnaires.
 
@@ -73,7 +75,7 @@ egui décrit chaque widget dans un arbre d'accessibilité (AccessKit) : l'interf
 |---|---|---|
 | 1. Tests de `ortelia-presentation` | toute la logique d'affichage | tests unitaires, sans interface |
 | 2. egui_kittest sans rendu | l'interface affiche le view-model ; les clics et les touches produisent les bonnes intentions | tests de `ortelia-ui-egui` (`Harness::new_eframe`, `get_by_label`) |
-| 3. Captures d'images | le rendu réel, comparé à une image de référence | pas encore : essai à l'incrément 1 (macOS en CI ou lavapipe) |
+| 3. Captures d'images | le rendu réel, comparé à une image de référence | pas encore : essai à l'incrément 2 (macOS en CI ou lavapipe) |
 | 4. Test de fumée de l'exécutable | la vraie fenêtre s'ouvre et dessine sans erreur | `crates/ortelia/tests/smoke.rs` |
 | 5. Test manuel | l'impression générale, la version Windows | WSLg ; bac à sable Windows (`tools/sandbox/run-sandbox.ps1 <dossier de ortelia.exe>`, vGPU désactivé car il fait planter wgpu) |
 

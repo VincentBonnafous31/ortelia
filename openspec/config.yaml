@@ -13,7 +13,8 @@ context: |
   (fichiers jusqu'à environ 500 Mo, tables jusqu'à 100 000 lignes).
 
   Références : CLAUDE.md (règles, conventions egui, commandes de compilation),
-  docs/feuille-de-route.md (incréments et critères « Fini quand »),
+  docs/feuille-de-route.md (vue d'ensemble), docs/feuille-de-route-<application>.md
+  (une par application jalon : incréments et critères « Fini quand »),
   docs/architecture-couches.md (couches, décisions D25 à D27), examples/ (applications jalons).
 
   Pile : Rust (workspace Cargo), egui 0.37 et eframe pour l'interface. Consulter
@@ -33,7 +34,7 @@ context: |
 
 rules:
   proposal:
-    - Rattacher le changement à un incrément de docs/feuille-de-route.md et reprendre ses critères « Fini quand ».
+    - Rattacher le changement à un incrément de la feuille de route de son application (docs/feuille-de-route-<application>.md) et reprendre ses critères « Fini quand ».
     - Dire ce qui est hors périmètre.
     - "Les artefacts sont versionnés et publics. Ne jamais renvoyer à docs/cadrage-prive/ (non versionné) ; reformuler les décisions utiles."
   specs:
