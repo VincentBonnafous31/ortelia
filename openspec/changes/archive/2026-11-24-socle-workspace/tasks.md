@@ -75,9 +75,10 @@ Toutes les commandes `cargo` se lancent dans WSL2, avec `CARGO_TARGET_DIR=~/targ
 - [x] 9.1 Lancer `/code-review` sur le diff complet et corriger les problèmes retenus. Vérifier : aucun problème important restant.
 - [x] 9.2 Lancer `/simplify` et appliquer les simplifications retenues. Vérifier : le diff simplifié compile.
 - [x] 9.3 Dans WSL2 : `cargo fmt --all --check`, `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo test --workspace --locked`, `cargo xtask check-layers`, puis le test de fumée dans WSLg (`cargo test -p ortelia --test smoke -- --ignored`). Vérifier : les cinq commandes réussissent.
-- [ ] 9.4 Après fusion sur `main` : vérifier que la CI est verte sur les deux OS et que les deux artefacts sont téléchargeables. Lancer l'exécutable Windows dans le bac à sable Windows (après avoir vérifié que Smart App Control n'y est pas actif) et constater que la fenêtre s'ouvre.
+- [x] 9.4 Après fusion sur `main` : vérifier que la CI est verte sur les deux OS et que les deux artefacts sont téléchargeables. Lancer l'exécutable Windows dans le bac à sable Windows (après avoir vérifié que Smart App Control n'y est pas actif) et constater que la fenêtre s'ouvre.
+  - Fait le 2026-11-24 : il a fallu lier la bibliothèque d'exécution C de façon statique (`VCRUNTIME140.dll` absente du bac à sable) et désactiver le vGPU du bac à sable (violation d'accès dans son pilote graphique). Le lanceur est dans `tools/sandbox/`.
 
 ## Workflow follow-up
 
 - Archiver le changement avec `/openspec-archive-change` une fois la CI verte sur `main`. Les spécifications `layered-workspace`, `app-launch`, `logging` et `continuous-integration` entrent alors dans `openspec/specs/`.
-- Le premier critère « Fini quand » de l'incrément 0 (CI verte sur les deux OS) est alors rempli. Les critères restants passent par les changements des essais S1, S2 et S3.
+- Le premier critère « Fini quand » de l'incrément 0 (CI verte sur les deux OS) est alors rempli. Les critères restants passent par les changements des essais S1, S2 et S3. (2026-11-24 : ces essais sont reportés au début de l'incrément 1, voir `docs/feuille-de-route.md`.)
