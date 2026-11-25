@@ -59,6 +59,11 @@ jobs:
       - name: Layer rule
         run: cargo xtask check-layers
 
+      # The schemas of schemas/ are generated from the code: they are the same on every system.
+      - name: JSON Schemas up to date
+        if: runner.os == 'Linux'
+        run: cargo xtask gen-schemas --check
+
       # Software rendering in a virtual screen: Xvfb, lavapipe (Vulkan) and Mesa (OpenGL).
       # winit loads libxkbcommon-x11 at run time under X11 and panics without it.
       - name: Install the smoke test packages

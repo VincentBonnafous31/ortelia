@@ -21,39 +21,90 @@ enum TypeEntry {
     Data(usize),
 }
 
-/// The declarations of all the files, flattened (nested packages included).
-#[derive(Default)]
-struct Declarations<'f> {
-    classes: Vec<&'f ClassDef>,
-    enums: Vec<&'f EnumDef>,
-    data_types: Vec<&'f DataTypeDef>,
+/// A compilation error, with the index of the file that declares the class, enum or data type
+/// in cause (`None` for an error about the whole model, such as [`ModelError::TooLarge`]).
+#[derive(Debug)]
+pub(super) struct Located {
+    pub file: Option<usize>,
+    pub error: ModelError,
 }
 
-impl<'f> Declarations<'f> {
-    fn collect(&mut self, package: &'f PackageDef) {
-        self.classes.extend(&package.classes);
-        self.enums.extend(&package.enums);
-        self.data_types.extend(&package.data_types);
-        for nested in &package.packages {
-            self.collect(nested);
+impl Located {
+    fn at(file: usize, error: ModelError) -> Located {
+        Located {
+            file: Some(file),
+            error,
         }
     }
 }
 
-pub(super) fn compile(files: &[ModelFile]) -> Result<Model, ModelError> {
+/// An error without a file: lets `?` convert the errors of [`small`].
+impl From<ModelError> for Located {
+    fn from(error: ModelError) -> Located {
+        Located { file: None, error }
+    }
+}
+
+/// The declarations of all the files, flattened (nested packages included), each with the index
+/// of its file in a parallel vector.
+#[derive(Default)]
+struct Declarations<'f> {
+    classes: Vec<&'f ClassDef>,
+    class_files: Vec<usize>,
+    enums: Vec<&'f EnumDef>,
+    enum_files: Vec<usize>,
+    data_types: Vec<&'f DataTypeDef>,
+    data_type_files: Vec<usize>,
+}
+
+impl<'f> Declarations<'f> {
+    fn collect(&mut self, package: &'f PackageDef, file: usize) {
+        self.classes.extend(&package.classes);
+        self.class_files
+            .extend(std::iter::repeat_n(file, package.classes.len()));
+        self.enums.extend(&package.enums);
+        self.enum_files
+            .extend(std::iter::repeat_n(file, package.enums.len()));
+        self.data_types.extend(&package.data_types);
+        self.data_type_files
+            .extend(std::iter::repeat_n(file, package.data_types.len()));
+        for nested in &package.packages {
+            self.collect(nested, file);
+        }
+    }
+}
+
+/// The features of a class, inherited ones first.
+#[derive(Clone, Default)]
+struct Layout {
+    attributes: Vec<Attribute>,
+    references: Vec<Reference>,
+}
+
+/// What pass 3 needs to lay out a class.
+struct Context<'d, 'f> {
+    decls: &'d Declarations<'f>,
+    class_by_name: &'d HashMap<String, ClassId>,
+    types: &'d HashMap<&'f str, TypeEntry>,
+}
+
+pub(super) fn compile(files: &[ModelFile]) -> Result<Model, Located> {
     let mut decls = Declarations::default();
-    for package in files.iter().flat_map(|f| &f.packages) {
-        decls.collect(package);
+    for (file, model_file) in files.iter().enumerate() {
+        for package in &model_file.packages {
+            decls.collect(package, file);
+        }
     }
 
-    // Pass 1: names.
+    // Pass 1: names. A duplicate is reported in the file of its second declaration.
     let mut class_by_name = HashMap::new();
     for (index, class) in decls.classes.iter().enumerate() {
         let id = ClassId(small(index, "classes")?);
         if class_by_name.insert(class.name.clone(), id).is_some() {
-            return Err(ModelError::DuplicateClass {
+            let error = ModelError::DuplicateClass {
                 name: class.name.clone(),
-            });
+            };
+            return Err(Located::at(decls.class_files[index], error));
         }
     }
     let mut types: HashMap<&str, TypeEntry> = HashMap::new();
@@ -63,56 +114,130 @@ pub(super) fn compile(files: &[ModelFile]) -> Result<Model, ModelError> {
     for (index, e) in decls.enums.iter().enumerate() {
         let entry = TypeEntry::Enum(EnumId(small(index, "enums")?));
         if types.insert(&e.name, entry).is_some() {
-            return Err(ModelError::DuplicateType {
+            let error = ModelError::DuplicateType {
                 name: e.name.clone(),
-            });
+            };
+            return Err(Located::at(decls.enum_files[index], error));
         }
     }
     for (index, d) in decls.data_types.iter().enumerate() {
         if types.insert(&d.name, TypeEntry::Data(index)).is_some() {
-            return Err(ModelError::DuplicateType {
+            let error = ModelError::DuplicateType {
                 name: d.name.clone(),
-            });
+            };
+            return Err(Located::at(decls.data_type_files[index], error));
         }
     }
 
     // Pass 2: super classes and chains of ancestors.
     let mut super_of = Vec::with_capacity(decls.classes.len());
-    for class in &decls.classes {
+    for (index, class) in decls.classes.iter().enumerate() {
         let super_class = match &class.super_class {
             None => None,
-            Some(name) => {
-                Some(
-                    *class_by_name
-                        .get(name)
-                        .ok_or_else(|| ModelError::UnknownSuperClass {
-                            class: class.name.clone(),
-                            super_class: name.clone(),
-                        })?,
-                )
-            }
+            Some(name) => match class_by_name.get(name) {
+                Some(id) => Some(*id),
+                None => {
+                    let error = ModelError::UnknownSuperClass {
+                        class: class.name.clone(),
+                        super_class: name.clone(),
+                    };
+                    return Err(Located::at(decls.class_files[index], error));
+                }
+            },
         };
         super_of.push(super_class);
     }
     let mut displays = Vec::with_capacity(decls.classes.len());
     for index in 0..decls.classes.len() {
-        displays.push(display_of(index, &super_of, &decls.classes)?);
+        let display = display_of(index, &super_of, &decls.classes)
+            .map_err(|error| Located::at(decls.class_files[index], error))?;
+        displays.push(display);
     }
 
     // Pass 3: layouts, super classes before their subclasses (sorted by depth).
     let mut order: Vec<usize> = (0..decls.classes.len()).collect();
     order.sort_by_key(|&index| displays[index].len());
-    let mut layouts: Vec<Option<(Vec<Attribute>, Vec<Reference>)>> =
-        vec![None; decls.classes.len()];
+    let mut layouts: Vec<Option<Layout>> = vec![None; decls.classes.len()];
+    let context = Context {
+        decls: &decls,
+        class_by_name: &class_by_name,
+        types: &types,
+    };
     for index in order {
-        let def = decls.classes[index];
-        let id = ClassId(small(index, "classes")?);
-        let (mut attributes, mut references) = match super_of[index] {
+        let inherited = match super_of[index] {
             Some(parent) => layouts[parent.index()]
                 .clone()
                 .expect("parent laid out first"),
-            None => (Vec::new(), Vec::new()),
+            None => Layout::default(),
         };
+        layouts[index] = Some(context.lay_out(index, inherited)?);
+    }
+
+    // Pass 4: assemble the classes, and record which ones have subclasses.
+    let mut classes = Vec::with_capacity(decls.classes.len());
+    for (index, (def, layout)) in decls.classes.iter().zip(layouts).enumerate() {
+        let Layout {
+            attributes,
+            references,
+        } = layout.expect("every class laid out");
+        let required_attributes = attributes
+            .iter()
+            .filter(|a| a.required)
+            .map(|a| a.id)
+            .collect();
+        classes.push(Class {
+            name: def.name.clone(),
+            id: ClassId(small(index, "classes")?),
+            is_abstract: def.is_abstract,
+            display: displays[index].clone(),
+            has_subclasses: false,
+            attributes,
+            references,
+            required_attributes,
+        });
+    }
+    for parent in super_of.iter().flatten() {
+        classes[parent.index()].has_subclasses = true;
+    }
+
+    let mut enums = Vec::with_capacity(decls.enums.len());
+    for (index, e) in decls.enums.iter().enumerate() {
+        // Enums are short: a quadratic search for a duplicate costs nothing.
+        for (position, literal) in e.literals.iter().enumerate() {
+            if e.literals[..position].contains(literal) {
+                let error = ModelError::DuplicateLiteral {
+                    enum_name: e.name.clone(),
+                    literal: literal.clone(),
+                };
+                return Err(Located::at(decls.enum_files[index], error));
+            }
+        }
+        enums.push(EnumType {
+            name: e.name.clone(),
+            literals: e.literals.clone(),
+        });
+    }
+    Ok(Model {
+        classes,
+        enums,
+        class_by_name,
+    })
+}
+
+impl Context<'_, '_> {
+    /// Lays out class `index`: the inherited features, then its own, with their types resolved.
+    /// An error is located in the file of the class, except a cycle of data types, located in
+    /// the file of a data type of the cycle.
+    fn lay_out(&self, index: usize, inherited: Layout) -> Result<Layout, Located> {
+        let Layout {
+            mut attributes,
+            mut references,
+        } = inherited;
+        let decls = self.decls;
+        let def = decls.classes[index];
+        let file = decls.class_files[index];
+        let fail = |error| Err(Located::at(file, error));
+        let id = ClassId(small(index, "classes")?);
         let declared_in = |name: &str, attributes: &[Attribute], references: &[Reference]| {
             let owner = attributes
                 .iter()
@@ -129,22 +254,31 @@ pub(super) fn compile(files: &[ModelFile]) -> Result<Model, ModelError> {
 
         for attr in &def.attributes {
             if let Some(declared_in) = declared_in(&attr.name, &attributes, &references) {
-                return Err(duplicate(&attr.name, def, declared_in));
+                return fail(duplicate(&attr.name, def, declared_in));
+            }
+            // An attribute holds at most one value, so its lower bound is 0 or 1; an upper bound
+            // other than 1 is valid but not supported yet.
+            if !matches!(attr.lower_bound, 0 | 1) || !valid_bounds(0, attr.upper_bound) {
+                return fail(invalid_bounds(
+                    def,
+                    &attr.name,
+                    attr.lower_bound,
+                    attr.upper_bound,
+                ));
             }
             if attr.upper_bound != 1 {
-                return Err(ModelError::MultiValuedAttribute {
+                return fail(ModelError::MultiValuedAttribute {
                     class: def.name.clone(),
                     attribute: attr.name.clone(),
                 });
             }
-            let attr_type =
-                resolve_type(&attr.type_name, &types, &decls.data_types)?.ok_or_else(|| {
-                    ModelError::UnknownType {
-                        type_name: attr.type_name.clone(),
-                        class: def.name.clone(),
-                        feature: attr.name.clone(),
-                    }
-                })?;
+            let Some(attr_type) = self.resolve_type(&attr.type_name)? else {
+                return fail(ModelError::UnknownType {
+                    type_name: attr.type_name.clone(),
+                    class: def.name.clone(),
+                    feature: attr.name.clone(),
+                });
+            };
             let position = small(attributes.len(), "attributes")?;
             attributes.push(Attribute {
                 name: attr.name.clone(),
@@ -153,20 +287,29 @@ pub(super) fn compile(files: &[ModelFile]) -> Result<Model, ModelError> {
                     index: position,
                 },
                 attr_type,
+                required: attr.lower_bound == 1,
             });
         }
 
         for reference in &def.references {
             if let Some(declared_in) = declared_in(&reference.name, &attributes, &references) {
-                return Err(duplicate(&reference.name, def, declared_in));
+                return fail(duplicate(&reference.name, def, declared_in));
             }
-            let target = *class_by_name.get(&reference.type_name).ok_or_else(|| {
-                ModelError::UnknownType {
+            if !valid_bounds(reference.lower_bound, reference.upper_bound) {
+                return fail(invalid_bounds(
+                    def,
+                    &reference.name,
+                    reference.lower_bound,
+                    reference.upper_bound,
+                ));
+            }
+            let Some(&target) = self.class_by_name.get(&reference.type_name) else {
+                return fail(ModelError::UnknownType {
                     type_name: reference.type_name.clone(),
                     class: def.name.clone(),
                     feature: reference.name.clone(),
-                }
-            })?;
+                });
+            };
             let position = small(references.len(), "references")?;
             references.push(Reference {
                 name: reference.name.clone(),
@@ -178,40 +321,39 @@ pub(super) fn compile(files: &[ModelFile]) -> Result<Model, ModelError> {
                 many: reference.upper_bound != 1,
             });
         }
-        layouts[index] = Some((attributes, references));
-    }
-
-    // Pass 4: assemble the classes, and record which ones have subclasses.
-    let mut classes = Vec::with_capacity(decls.classes.len());
-    for (index, (def, layout)) in decls.classes.iter().zip(layouts).enumerate() {
-        let (attributes, references) = layout.expect("every class laid out");
-        classes.push(Class {
-            name: def.name.clone(),
-            id: ClassId(small(index, "classes")?),
-            is_abstract: def.is_abstract,
-            display: displays[index].clone(),
-            has_subclasses: false,
+        Ok(Layout {
             attributes,
             references,
-        });
-    }
-    for parent in super_of.iter().flatten() {
-        classes[parent.index()].has_subclasses = true;
+        })
     }
 
-    let enums = decls
-        .enums
-        .iter()
-        .map(|e| EnumType {
-            name: e.name.clone(),
-            literals: e.literals.clone(),
-        })
-        .collect();
-    Ok(Model {
-        classes,
-        enums,
-        class_by_name,
-    })
+    /// Resolves a type name to the way its values are stored. `Ok(None)` if the name is unknown.
+    fn resolve_type(&self, name: &str) -> Result<Option<AttrType>, Located> {
+        let data_types = &self.decls.data_types;
+        let mut current = name;
+        // The data types met so far, down the `baseType`s: meeting one again closes a cycle.
+        let mut visited = Vec::new();
+        loop {
+            match self.types.get(current) {
+                None => return Ok(None),
+                Some(TypeEntry::Base(base)) => return Ok(Some(*base)),
+                Some(TypeEntry::Enum(id)) => return Ok(Some(AttrType::Enum(*id))),
+                Some(TypeEntry::Data(index)) if visited.contains(index) => {
+                    // Reported on the data type met again, which is in the cycle, and in its
+                    // file: the type of the attribute may only lead to the cycle.
+                    let error = ModelError::DataTypeCycle {
+                        name: data_types[*index].name.clone(),
+                    };
+                    let file = Some(self.decls.data_type_files[*index]);
+                    return Err(Located { file, error });
+                }
+                Some(TypeEntry::Data(index)) => {
+                    visited.push(*index);
+                    current = &data_types[*index].base_type;
+                }
+            }
+        }
+    }
 }
 
 /// Chain of ancestors of a class, from the root class down to the class itself.
@@ -239,32 +381,27 @@ fn display_of(
     Ok(chain)
 }
 
-/// Resolves a type name to the way its values are stored. `Ok(None)` if the name is unknown.
-fn resolve_type(
-    name: &str,
-    types: &HashMap<&str, TypeEntry>,
-    data_types: &[&DataTypeDef],
-) -> Result<Option<AttrType>, ModelError> {
-    let mut current = name;
-    // Each step goes down one `baseType`: more steps than there are data types means a cycle.
-    for _ in 0..=data_types.len() {
-        match types.get(current) {
-            None => return Ok(None),
-            Some(TypeEntry::Base(base)) => return Ok(Some(*base)),
-            Some(TypeEntry::Enum(id)) => return Ok(Some(AttrType::Enum(*id))),
-            Some(TypeEntry::Data(index)) => current = &data_types[*index].base_type,
-        }
-    }
-    Err(ModelError::DataTypeCycle {
-        name: name.to_owned(),
-    })
-}
-
 fn duplicate(name: &str, class: &ClassDef, declared_in: String) -> ModelError {
     ModelError::DuplicateFeature {
         name: name.to_owned(),
         class: class.name.clone(),
         declared_in,
+    }
+}
+
+/// `true` if a lower and an upper bound are consistent: the lower bound is positive or zero, the
+/// upper bound is -1 (unbounded) or at least 1, and a limited upper bound is not below the lower
+/// bound.
+fn valid_bounds(lower: i32, upper: i32) -> bool {
+    lower >= 0 && (upper == -1 || (upper >= 1 && lower <= upper))
+}
+
+fn invalid_bounds(class: &ClassDef, feature: &str, lower: i32, upper: i32) -> ModelError {
+    ModelError::InvalidBounds {
+        class: class.name.clone(),
+        feature: feature.to_owned(),
+        lower,
+        upper,
     }
 }
 
@@ -303,13 +440,65 @@ mod tests {
     #[test]
     fn directory_model() {
         let model = Model::compile(&[example("annuaire/annuaire.model.json")]).expect("compile");
-        let person = model.class(model.class_id("Personne").expect("Personne"));
-        assert_eq!(names(person), ["nom", "prenom", "date_naissance"]);
-        assert_eq!(person.attributes()[2].attr_type(), AttrType::Date);
-        let directory = model.class(model.class_id("Annuaire").expect("Annuaire"));
+        let class = |name| model.class(model.class_id(name).expect(name));
+        let (root, directory, person) = (class("Racine"), class("Annuaire"), class("Personne"));
+
+        let annuaire = model.reference(root.reference("annuaire").expect("annuaire"));
+        assert!(!annuaire.is_many());
+        assert_eq!(annuaire.target(), directory.id());
         let persons = model.reference(directory.reference("personnes").expect("personnes"));
         assert!(persons.is_many());
         assert_eq!(persons.target(), person.id());
+
+        assert_eq!(
+            names(person),
+            [
+                "nom",
+                "prenom",
+                "date_naissance",
+                "nombre_enfants",
+                "taille",
+                "contact_autorise",
+                "situation",
+                "inscription",
+                "notes"
+            ]
+        );
+        let types: Vec<String> = person
+            .attributes()
+            .iter()
+            .map(|a| model.type_name(a.attr_type()).to_owned())
+            .collect();
+        assert_eq!(
+            types,
+            [
+                "String",
+                "String",
+                "Date",
+                "Int",
+                "Float",
+                "Boolean",
+                "SituationFamiliale",
+                "DateTime",
+                // `TexteLong` is derived from String, and stored as one.
+                "String"
+            ]
+        );
+        let AttrType::Enum(situation) = person.attributes()[6].attr_type() else {
+            panic!("situation is not an enum");
+        };
+        assert_eq!(
+            model.enum_type(situation).literals(),
+            ["CELIBATAIRE", "MARIE", "PACSE", "DIVORCE", "VEUF"]
+        );
+        // The data type `TexteLong` is the one declared for `notes`.
+        let file = example("annuaire/annuaire.model.json");
+        let notes = &file.packages[0].classes[2].attributes[8];
+        assert_eq!(
+            (notes.name.as_str(), notes.type_name.as_str()),
+            ("notes", "TexteLong")
+        );
+        assert_eq!(file.packages[0].data_types[0].base_type, "String");
     }
 
     /// The metamodel described with itself is read, but does not compile yet: `Enum.literals`
@@ -608,6 +797,111 @@ mod tests {
         let emprise = model.reference(class("ZoneAlerte").reference("emprise").expect("emprise"));
         assert!(!emprise.is_many());
         assert!(model.class(emprise.target()).is_abstract());
+    }
+
+    /// Scenario "Attribut obligatoire", and required attributes inherited by a subclass.
+    #[test]
+    fn required_attributes() {
+        let model = compile_one(
+            r#"{ "name": "p", "classes": [
+                { "name": "Personne", "attributes": [
+                    { "name": "nom", "type": "String", "lowerBound": 1 },
+                    { "name": "prenom", "type": "String" } ] },
+                { "name": "Salarie", "superClass": "Personne", "attributes": [
+                    { "name": "matricule", "type": "String", "lowerBound": 1 },
+                    { "name": "poste", "type": "String", "lowerBound": 0 } ] } ] }"#,
+        )
+        .expect("compile");
+        let person = model.class(model.class_id("Personne").expect("Personne"));
+        let nom = person.attribute("nom").expect("nom");
+        assert!(model.attribute(nom).is_required());
+        assert!(
+            !model
+                .attribute(person.attribute("prenom").expect("prenom"))
+                .is_required()
+        );
+        assert_eq!(person.required_attributes(), [nom]);
+        let employee = model.class(model.class_id("Salarie").expect("Salarie"));
+        let matricule = employee.attribute("matricule").expect("matricule");
+        assert_eq!(employee.required_attributes(), [nom, matricule]);
+    }
+
+    /// Compiles a class `A` with one reference `r` of the given bounds.
+    fn reference_bounds(lower: i32, upper: i32) -> Result<Model, ModelError> {
+        compile_one(&format!(
+            r#"{{ "name": "p", "classes": [ {{ "name": "A", "references": [
+                {{ "name": "r", "type": "A", "lowerBound": {lower}, "upperBound": {upper} }} ] }} ] }}"#
+        ))
+    }
+
+    fn assert_invalid_bounds(
+        result: Result<Model, ModelError>,
+        feature: &str,
+        lower: i32,
+        upper: i32,
+    ) {
+        let error = result.expect_err("invalid bounds");
+        assert_eq!(
+            error,
+            ModelError::InvalidBounds {
+                class: "A".into(),
+                feature: feature.into(),
+                lower,
+                upper
+            }
+        );
+        let message = error.to_string();
+        assert!(
+            message.contains(&format!("A.{feature}"))
+                && message.contains(&format!("lowerBound {lower}"))
+                && message.contains(&format!("upperBound {upper}")),
+            "{message}"
+        );
+    }
+
+    /// Scenarios "Borne inférieure négative", "Bornes inversées" and "Borne supérieure nulle".
+    #[test]
+    fn invalid_reference_bounds() {
+        assert_invalid_bounds(reference_bounds(-1, 1), "r", -1, 1);
+        assert_invalid_bounds(reference_bounds(3, 2), "r", 3, 2);
+        assert_invalid_bounds(reference_bounds(0, 0), "r", 0, 0);
+        assert_invalid_bounds(reference_bounds(0, -2), "r", 0, -2);
+        for (lower, upper) in [(0, 1), (1, 1), (0, -1), (2, -1), (2, 5)] {
+            assert!(reference_bounds(lower, upper).is_ok(), "{lower}..{upper}");
+        }
+    }
+
+    /// Scenario "Attribut de borne inférieure 2", and a negative lower bound.
+    #[test]
+    fn invalid_attribute_bounds() {
+        for lower in [2, -1] {
+            let result = compile_one(&format!(
+                r#"{{ "name": "p", "classes": [ {{ "name": "A", "attributes": [
+                    {{ "name": "x", "type": "Int", "lowerBound": {lower} }} ] }} ] }}"#
+            ));
+            assert_invalid_bounds(result, "x", lower, 1);
+        }
+    }
+
+    /// Scenario "Littéral en double".
+    #[test]
+    fn duplicate_literal() {
+        let error = compile_one(
+            r#"{ "name": "p", "enums": [ { "name": "Qualite", "literals": ["BONNE", "DOUTEUSE", "BONNE"] } ] }"#,
+        )
+        .expect_err("duplicate literal");
+        assert_eq!(
+            error,
+            ModelError::DuplicateLiteral {
+                enum_name: "Qualite".into(),
+                literal: "BONNE".into()
+            }
+        );
+        let message = error.to_string();
+        assert!(
+            message.contains("Qualite") && message.contains("BONNE"),
+            "{message}"
+        );
     }
 
     #[test]

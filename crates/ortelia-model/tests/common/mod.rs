@@ -10,11 +10,17 @@ use ortelia_model::metamodel::{AttrId, ClassId, Model, ModelFile, RefId};
 
 /// The compiled test model of the weather network.
 pub fn network_model() -> Arc<Model> {
-    let path = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../examples/reseau-meteo/reseau.model.json"
-    );
-    let text = std::fs::read_to_string(path).expect("model file");
+    example_model("reseau-meteo/reseau.model.json")
+}
+
+/// The compiled model of the directory application.
+pub fn directory_model() -> Arc<Model> {
+    example_model("annuaire/annuaire.model.json")
+}
+
+fn example_model(path: &str) -> Arc<Model> {
+    let path = format!("{}/../../examples/{path}", env!("CARGO_MANIFEST_DIR"));
+    let text = std::fs::read_to_string(&path).expect("model file");
     Arc::new(Model::compile(&[ModelFile::parse(&text).expect("parse")]).expect("compile"))
 }
 
@@ -24,6 +30,12 @@ pub struct Names {
 }
 
 impl Names {
+    pub fn new(model: &Arc<Model>) -> Names {
+        Names {
+            model: model.clone(),
+        }
+    }
+
     pub fn class(&self, name: &str) -> ClassId {
         self.model
             .class_id(name)

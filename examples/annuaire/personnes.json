@@ -1,12 +1,55 @@
 [
-  { "nom": "Dupont", "prenom": "Marie", "date_naissance": "1985-03-12" },
-  { "nom": "Martin", "prenom": "Lucas", "date_naissance": "1992-07-24" },
-  { "nom": "Bernard", "prenom": "Camille", "date_naissance": "1978-11-05" },
-  { "nom": "Petit", "prenom": "Hugo", "date_naissance": "2001-01-30" },
-  { "nom": "Robert", "prenom": "Léa", "date_naissance": "1996-09-17" },
-  { "nom": "Richard", "prenom": "Antoine", "date_naissance": "1969-06-02" },
-  { "nom": "Durand", "prenom": "Chloé", "date_naissance": "1988-12-21" },
-  { "nom": "Moreau", "prenom": "Julien", "date_naissance": "1974-04-08" },
-  { "nom": "Lefebvre", "prenom": "Inès", "date_naissance": "2003-08-14" },
-  { "nom": "Garcia", "prenom": "Théo", "date_naissance": "1999-02-27" }
+  {
+    "nom": "Dupont", "prenom": "Marie", "date_naissance": "1985-03-12",
+    "nombre_enfants": 2, "taille": 1.68, "contact_autorise": true, "situation": "MARIE",
+    "inscription": "2024-01-15T09:30:00Z",
+    "notes": "Référente de l'association de quartier depuis 2019. Préfère être contactée le soir, après 18 h, par téléphone plutôt que par courriel."
+  },
+  {
+    "nom": "Martin", "prenom": "Lucas", "date_naissance": "1992-07-24",
+    "nombre_enfants": 0, "taille": 1.82, "contact_autorise": false, "situation": "CELIBATAIRE",
+    "inscription": "2024-02-03T14:05:00Z"
+  },
+  {
+    "nom": "Bernard", "prenom": "Camille", "date_naissance": "1978-11-05",
+    "nombre_enfants": 3, "taille": 1.61, "contact_autorise": true, "situation": "DIVORCE",
+    "inscription": "2024-02-20T08:45:00Z",
+    "notes": "A déménagé en 2023."
+  },
+  {
+    "nom": "Petit", "prenom": "Hugo", "date_naissance": "2001-01-30",
+    "nombre_enfants": 0, "taille": 1.75, "contact_autorise": true, "situation": "CELIBATAIRE",
+    "inscription": "2024-03-11T17:20:00Z"
+  },
+  {
+    "nom": "Robert", "prenom": "Léa", "date_naissance": "1996-09-17",
+    "nombre_enfants": 1, "taille": 1.64, "contact_autorise": true, "situation": "PACSE",
+    "inscription": "2024-04-02T10:00:00Z"
+  },
+  {
+    "nom": "Richard", "prenom": "Antoine", "date_naissance": "1969-06-02",
+    "nombre_enfants": 4, "taille": 1.79, "contact_autorise": false, "situation": "VEUF",
+    "inscription": "2024-04-28T16:40:00Z",
+    "notes": "Ne souhaite pas recevoir la lettre d'information."
+  },
+  {
+    "nom": "Durand", "prenom": "Chloé", "date_naissance": "1988-12-21",
+    "nombre_enfants": 2, "taille": 1.70, "contact_autorise": true, "situation": "MARIE",
+    "inscription": "2024-05-09T11:15:00Z"
+  },
+  {
+    "nom": "Moreau", "prenom": "Julien", "date_naissance": "1974-04-08",
+    "taille": 1.86, "situation": "MARIE",
+    "inscription": "2024-06-14T13:50:00Z"
+  },
+  {
+    "nom": "Lefebvre", "prenom": "Inès", "date_naissance": "2003-08-14",
+    "nombre_enfants": 0, "contact_autorise": true,
+    "inscription": "2024-07-01T07:55:00Z"
+  },
+  {
+    "nom": "Garcia", "prenom": "Théo", "date_naissance": "1999-02-27",
+    "nombre_enfants": 0, "taille": 1.77, "contact_autorise": false, "situation": "CELIBATAIRE",
+    "inscription": "2024-09-23T15:10:00Z"
+  }
 ]

@@ -14,8 +14,12 @@ use serde::Deserialize;
 
 /// A whole model file.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ModelFile {
+    /// The JSON Schema of the file, for text editors: read and ignored.
+    #[serde(rename = "$schema", default)]
+    pub schema: Option<String>,
     pub format_version: String,
     #[serde(default)]
     pub packages: Vec<PackageDef>,
@@ -30,6 +34,7 @@ impl ModelFile {
 
 /// A package: classes, enums, data types, and nested packages.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct PackageDef {
     pub name: String,
@@ -45,6 +50,7 @@ pub struct PackageDef {
 
 /// A class, with its own attributes and containment references (not the inherited ones).
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ClassDef {
     pub name: String,
@@ -63,6 +69,7 @@ pub struct ClassDef {
 
 /// An attribute: a value of a base type, an enum or a data type.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct AttributeDef {
     pub name: String,
@@ -88,6 +95,7 @@ pub struct AttributeDef {
 
 /// A containment reference: the children belong to the object that holds the reference.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ReferenceDef {
     pub name: String,
@@ -102,10 +110,12 @@ pub struct ReferenceDef {
 
 /// An enum: an ordered list of literals.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct EnumDef {
     pub name: String,
-    /// Not used: an enum value is stored as the index of its literal.
+    /// Not used.
+    // An enum value is stored as the index of its literal: no base type is needed.
     #[serde(default)]
     pub base_type: Option<String>,
     pub literals: Vec<String>,
@@ -113,6 +123,7 @@ pub struct EnumDef {
 
 /// A data type derived from another type (`baseType`), with restrictions not used yet.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct DataTypeDef {
     pub name: String,
@@ -131,6 +142,7 @@ pub struct DataTypeDef {
 
 /// A constraint on a class. Not used yet.
 #[derive(Debug, Clone, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ConstraintDef {
     pub name: String,
@@ -158,8 +170,13 @@ mod tests {
     #[test]
     fn reads_the_directory_model() {
         let file = ModelFile::parse(&example("annuaire/annuaire.model.json")).expect("parse");
-        assert_eq!(file.packages[0].classes.len(), 2);
-        assert_eq!(file.packages[0].classes[0].references[0].upper_bound, -1);
+        let package = &file.packages[0];
+        assert_eq!(package.classes.len(), 3);
+        // `Racine.annuaire` is a single reference, `Annuaire.personnes` a list.
+        assert_eq!(package.classes[0].references[0].upper_bound, 1);
+        assert_eq!(package.classes[1].references[0].upper_bound, -1);
+        assert_eq!(package.classes[2].attributes[4].unit.as_deref(), Some("m"));
+        assert_eq!(package.enums[0].literals.len(), 5);
     }
 
     #[test]

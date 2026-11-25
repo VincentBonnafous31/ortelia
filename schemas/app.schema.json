@@ -1,0 +1,101 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "AppFile",
+  "description": "A whole `app.json`: the definition of an application.",
+  "type": "object",
+  "properties": {
+    "$schema": {
+      "description": "The JSON Schema of the file, for text editors: read and ignored.",
+      "type": [
+        "string",
+        "null"
+      ],
+      "default": null
+    },
+    "formatVersion": {
+      "type": "string"
+    },
+    "id": {
+      "description": "The identifier of the application.",
+      "type": "string"
+    },
+    "name": {
+      "description": "Its name, for the user.",
+      "type": "string"
+    },
+    "model": {
+      "$ref": "#/definitions/ModelSection"
+    },
+    "sources": {
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/SourceDef"
+      }
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "formatVersion",
+    "id",
+    "name",
+    "model"
+  ],
+  "definitions": {
+    "ModelSection": {
+      "description": "The model of the application.",
+      "type": "object",
+      "properties": {
+        "files": {
+          "description": "The model files, relative to the folder of `app.json`.",
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "root": {
+          "description": "The name of the class of the root object.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "files",
+        "root"
+      ]
+    },
+    "SourceDef": {
+      "description": "A source of data: a file that fills a branch of the data.",
+      "type": "object",
+      "properties": {
+        "id": {
+          "type": "string"
+        },
+        "format": {
+          "$ref": "#/definitions/SourceFormat"
+        },
+        "file": {
+          "description": "The data file, relative to the folder of `app.json`.",
+          "type": "string"
+        },
+        "target": {
+          "description": "The branch it fills: `/` for the root, or `/r1/…/rn`, names of containment references.",
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "format",
+        "file",
+        "target"
+      ]
+    },
+    "SourceFormat": {
+      "description": "The format of a source.",
+      "type": "string",
+      "enum": [
+        "json"
+      ]
+    }
+  }
+}

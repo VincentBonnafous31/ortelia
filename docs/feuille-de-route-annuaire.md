@@ -1,10 +1,10 @@
 # Feuille de route — Application 1 « Annuaire des personnes »
 
-*2026-11-24, incrément 1 précisé le 2026-11-25. Proposé, à valider. Vue d'ensemble et principes : [`feuille-de-route.md`](feuille-de-route.md).*
+*2026-11-24, incrément 1 précisé puis réalisé le 2026-11-25. Proposé, à valider. Vue d'ensemble et principes : [`feuille-de-route.md`](feuille-de-route.md).*
 
 Le modèle et les données d'abord, sans interface ; puis une table, un formulaire en lecture seule, la langue, l'édition et les contraintes. Chaque incrément ajoute une brique qu'on peut voir ou tester.
 
-`examples/annuaire/` contient le modèle (`annuaire.model.json`), les données (`personnes.json`) et la configuration (`app.json`). Ces fichiers s'enrichissent d'un incrément à l'autre : l'`app.json` actuel correspond à la fin de l'incrément 2.
+`examples/annuaire/` contient le modèle (`annuaire.model.json`), les données (`personnes.json`) et la configuration (`app.json`). Ces fichiers s'enrichissent d'un incrément à l'autre : l'`app.json` actuel ne contient que ce qu'utilise l'incrément 1, le modèle et les sources.
 
 | Inc. | Contenu | Essai technique en début d'incrément |
 |---|---|---|
@@ -26,7 +26,7 @@ L'incrément compte deux changements OpenSpec :
 | Changement | Contenu |
 |---|---|
 | `stockage-dynamique` (essai S1) | métamodèle, Store d'objets, constructeur, lecteur JSON ; mesures et choix du stockage |
-| « modèle et données » (à proposer) | `app.json`, erreurs claires, validation par le modèle, modification et notification, JSON Schema |
+| `modele-et-donnees` | `app.json`, erreurs claires, validation par le modèle, modification et notification, JSON Schema |
 
 ### Essai S1 : stockage dynamique
 
@@ -56,18 +56,20 @@ L'incrément compte deux changements OpenSpec :
   - attribut inconnu ou valeur de mauvais type : le chargement est refusé, et toutes les erreurs sont rassemblées (avec un plafond et le total), chacune avec son chemin dans le modèle ;
   - attribut obligatoire absent : l'objet est chargé, avec un diagnostic ;
   - le message montré à l'utilisateur peut citer la valeur fautive, le journal jamais.
-- **Lire puis intégrer** (changement 2) :
-  - un lecteur remplit toujours un Store neuf, sans liste des changements ;
-  - l'intégration dans le contexte de l'application est un remplacement, qui ne produit qu'une seule entrée grossière dans la liste des changements ;
+- **Lire puis intégrer** (changement 2, `architecture-couches.md`, D30 et D32) :
+  - un lecteur remplit toujours un fragment neuf (un Store détaché et les objets de sa branche), sans liste des changements ;
+  - l'intégration greffe le fragment sur sa branche (`/`, `/annuaire/personnes`…) en remplaçant son contenu, sans recopier les objets, et ne produit qu'un seul changement ;
+  - à l'ouverture, la racine désignée par `app.json` et les objets intermédiaires des cibles sont créés d'abord ; chaque source alimente sa propre branche ;
   - la fusion avec des objets existants viendra avec la source REST.
 - **Création, lecture, modification et suppression d'objets**, couvertes par des tests unitaires (changements 1 et 2).
-- **Notification des modifications** (changement 2) : toute modification passe par l'API du stockage, qui tient un numéro de révision et la liste des changements (objet, attribut, ancienne et nouvelle valeur).
-  - La présentation la consultera pour savoir qu'un cache est périmé, par exemple l'index trié de la table.
-  - La même liste servira à Appliquer / Annuler et à l'indicateur « modifié » (voir `architecture-couches.md`, § 3).
-  - Mécanisme à arrêter dans la conception, testé sans interface.
+- **Notification des modifications** (changement 2, `architecture-couches.md`, D31) : toute modification passe par une transaction du Document, seul à modifier le Store. Le Document tient un numéro de révision et le journal des changements (créations, suppressions, anciennes et nouvelles valeurs, remplacements de branche).
+  - La présentation lira la révision et les changements depuis celle qu'elle a vue, sans observateurs, pour savoir qu'un cache est périmé, par exemple l'index trié de la table.
+  - Le même journal servira à Appliquer / Annuler et à l'indicateur « modifié » (voir `architecture-couches.md`, § 3).
 - **JSON Schema des fichiers de configuration** (`app.json`, `*.model.json`, changement 2), généré depuis les types Rust : validation et autocomplétion dans l'éditeur de texte, tant que ces fichiers s'écrivent à la main.
 
 **Fini quand** : mesures de S1 consignées et choix du stockage arrêté (changement 1) ; le modèle, `app.json` et `personnes.json` se chargent, et des fichiers fautifs produisent des erreurs claires ; les tests de création, modification, suppression et notification passent (changement 2).
+
+**Résultat** : l'ouverture de `examples/annuaire/app.json` (`AppContext::open`) compile le modèle, crée la racine et l'annuaire, puis y greffe les dix personnes ; les erreurs de `app.json`, du modèle et des données sont rassemblées, chacune avec son fichier ou son chemin, et le journal ne contient aucune valeur des données. `cargo xtask gen-schemas` génère les schémas de `schemas/`, que la CI vérifie.
 
 ---
 
@@ -78,7 +80,7 @@ On ajoute à la fenêtre une vue contenant la table des personnes.
 Contenu :
 - `app.json` complété : fenêtre (titre, taille), container `View`, présentation de la classe `Personne` (colonnes, tri initial).
 - Création de la vue et de sa table à la lecture de `app.json`.
-- Liaison de la table aux données (`/personnes`) et à la présentation de `Personne`.
+- Liaison de la table aux données (`/annuaire/personnes`) et à la présentation de `Personne`.
 - Widget table : colonnes, tri multiple, filtre, largeur et ordre des colonnes, format des dates.
 - En-têtes de colonnes lus dans les libellés de `app.json`, par la recherche définitive (langue courante, puis l'autre langue, puis nom de l'attribut) mais avec une langue fixe : l'incrément 4 n'aura qu'à ajouter le choix.
 - État de session : la disposition de la table (largeurs, ordre, tri, filtre) et la taille de la fenêtre sont enregistrées à la fermeture et restaurées à l'ouverture, dans un fichier propre à l'utilisateur, rangé sous l'`id` de l'application. `app.json`, définition partagée et versionnée de l'application, n'est jamais modifié par l'utilisation.

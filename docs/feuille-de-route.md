@@ -24,7 +24,7 @@ La suite se décidera à la fin de l'application 2. Les pistes connues sont en f
 - Polymorphisme par le champ `_type_` : les containers sont des `View`, `Stack` ou `Split`.
 - Pas de dictionnaires libres : les libellés sont des listes `{ key, text }` par langue.
 
-`examples/annuaire/app.json` (format 0.2) et `examples/annuaire/annuaire.model.json` appliquent déjà ces règles.
+`examples/annuaire/app.json` (format 0.3) et `examples/annuaire/annuaire.model.json` appliquent déjà ces règles.
 
 ---
 

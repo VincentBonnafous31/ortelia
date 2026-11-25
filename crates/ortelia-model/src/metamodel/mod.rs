@@ -1,7 +1,8 @@
 //! The metamodel: what the data of an application look like, known only at run time.
 //!
-//! A model is read from one or more model files ([`file`]), then compiled ([`Model::compile`])
-//! into a form made for fast access:
+//! A model is read from one or more model files ([`file`]), then compiled ([`Model::load`], which
+//! names the file in cause in its errors, or [`Model::compile`]) into a form made for fast
+//! access:
 //! - every class, attribute and reference gets a small identifier, resolved once from its name;
 //! - every attribute and reference gets a fixed position in its class, the same in all
 //!   subclasses (inherited features come first), so a store can find a value without looking
@@ -105,6 +106,7 @@ pub struct Attribute {
     name: String,
     id: AttrId,
     attr_type: AttrType,
+    required: bool,
 }
 
 impl Attribute {
@@ -118,6 +120,11 @@ impl Attribute {
 
     pub fn attr_type(&self) -> AttrType {
         self.attr_type
+    }
+
+    /// `true` if the attribute must have a value (`lowerBound` 1).
+    pub fn is_required(&self) -> bool {
+        self.required
     }
 }
 
@@ -162,6 +169,8 @@ pub struct Class {
     has_subclasses: bool,
     attributes: Vec<Attribute>,
     references: Vec<Reference>,
+    /// The required attributes, inherited ones included, computed once at compilation.
+    required_attributes: Vec<AttrId>,
 }
 
 impl Class {
@@ -205,6 +214,12 @@ impl Class {
     /// All the containment references, inherited ones first, in the order of their positions.
     pub fn references(&self) -> &[Reference] {
         &self.references
+    }
+
+    /// The required attributes, declared or inherited, in the order of their positions. Empty
+    /// for most classes, so that checking them costs nothing.
+    pub fn required_attributes(&self) -> &[AttrId] {
+        &self.required_attributes
     }
 
     /// Finds an attribute, declared or inherited, by its name. Call it once, not on every access.
@@ -260,9 +275,40 @@ pub struct Model {
 }
 
 impl Model {
-    /// Compiles the model described by one or more model files.
+    /// Reads and compiles the model described by one or more model files, each with its name.
+    /// An error names the file in cause: the file being read, or the one that declares the
+    /// class, enum or data type in cause.
+    pub fn load(files: &[NamedModelFile]) -> Result<Model, ModelLoadError> {
+        let mut parsed = Vec::with_capacity(files.len());
+        for file in files {
+            let located = |kind| ModelLoadError {
+                file: Some(file.name.clone()),
+                kind,
+            };
+            let model_file = ModelFile::parse(&file.text).map_err(|error| {
+                located(ModelLoadErrorKind::Syntax {
+                    line: error.line(),
+                    column: error.column(),
+                    message: without_position(&error),
+                })
+            })?;
+            if model_file.format_version != MODEL_FORMAT_VERSION {
+                return Err(located(ModelLoadErrorKind::Version {
+                    found: model_file.format_version,
+                }));
+            }
+            parsed.push(model_file);
+        }
+        compile::compile(&parsed).map_err(|located| ModelLoadError {
+            file: located.file.map(|index| files[index].name.clone()),
+            kind: ModelLoadErrorKind::Compile(located.error),
+        })
+    }
+
+    /// Compiles the model described by one or more model files already read, without checking
+    /// their version. For tests and tools; an application reads its model with [`Model::load`].
     pub fn compile(files: &[ModelFile]) -> Result<Model, ModelError> {
-        compile::compile(files)
+        compile::compile(files).map_err(|located| located.error)
     }
 
     /// Finds a class by its name.
@@ -313,6 +359,72 @@ impl Model {
     }
 }
 
+/// The version of the model file format that this code reads.
+pub const MODEL_FORMAT_VERSION: &str = "0.1";
+
+/// The text of a model file, with the name that errors give it (usually its path).
+#[derive(Debug, Clone)]
+pub struct NamedModelFile {
+    pub name: String,
+    pub text: String,
+}
+
+/// An error that prevents a model from loading, with the file in cause.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelLoadError {
+    /// `None` for an error about the whole model ([`ModelError::TooLarge`]).
+    pub file: Option<String>,
+    pub kind: ModelLoadErrorKind,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ModelLoadErrorKind {
+    /// The file is not valid JSON, or does not follow the format (unknown key, missing key,
+    /// value of the wrong type). `message` is serde_json's, without its position.
+    Syntax {
+        line: usize,
+        column: usize,
+        message: String,
+    },
+    /// The file declares another version of the format than [`MODEL_FORMAT_VERSION`].
+    Version { found: String },
+    /// The model does not compile.
+    Compile(ModelError),
+}
+
+impl fmt::Display for ModelLoadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if let Some(file) = &self.file {
+            write!(f, "{file}: ")?;
+        }
+        match &self.kind {
+            ModelLoadErrorKind::Syntax {
+                line,
+                column,
+                message,
+            } => write!(f, "line {line}, column {column}: {message}"),
+            ModelLoadErrorKind::Version { found } => write!(
+                f,
+                "unsupported formatVersion `{found}` (expected `{MODEL_FORMAT_VERSION}`)"
+            ),
+            ModelLoadErrorKind::Compile(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl std::error::Error for ModelLoadError {}
+
+/// The message of a serde_json error without the ` at line L column C` that ends it, for
+/// errors that give the position in their own way.
+pub fn without_position(error: &serde_json::Error) -> String {
+    let message = error.to_string();
+    let suffix = format!(" at line {} column {}", error.line(), error.column());
+    match message.strip_suffix(&suffix) {
+        Some(stripped) => stripped.to_owned(),
+        None => message,
+    }
+}
+
 /// An error that prevents a model from compiling.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModelError {
@@ -341,6 +453,17 @@ pub enum ModelError {
     },
     /// An attribute has an upper bound other than 1.
     MultiValuedAttribute { class: String, attribute: String },
+    /// The bounds of an attribute or of a reference are inconsistent: a lower bound other than
+    /// 0 or 1 for an attribute, a negative lower bound, an upper bound of 0 or below -1, or a
+    /// lower bound above a limited upper bound.
+    InvalidBounds {
+        class: String,
+        feature: String,
+        lower: i32,
+        upper: i32,
+    },
+    /// An enum declares the same literal twice.
+    DuplicateLiteral { enum_name: String, literal: String },
     /// More classes, enums, attributes or references than the identifiers can number.
     TooLarge { what: &'static str },
 }
@@ -378,9 +501,148 @@ impl fmt::Display for ModelError {
                 f,
                 "`{class}.{attribute}`: multi-valued attributes are not supported yet"
             ),
+            ModelError::InvalidBounds {
+                class,
+                feature,
+                lower,
+                upper,
+            } => write!(
+                f,
+                "`{class}.{feature}`: invalid bounds (lowerBound {lower}, upperBound {upper})"
+            ),
+            ModelError::DuplicateLiteral { enum_name, literal } => {
+                write!(
+                    f,
+                    "enum `{enum_name}`: literal `{literal}` is declared twice"
+                )
+            }
             ModelError::TooLarge { what } => write!(f, "too many {what} in the model"),
         }
     }
 }
 
 impl std::error::Error for ModelError {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn named(name: &str, text: &str) -> NamedModelFile {
+        NamedModelFile {
+            name: name.to_owned(),
+            text: text.to_owned(),
+        }
+    }
+
+    const FIRST: &str = r#"{ "formatVersion": "0.1", "packages": [ { "name": "a", "classes": [
+        { "name": "Base", "attributes": [ { "name": "code", "type": "String" } ] } ] } ] }"#;
+
+    /// Scenario "Erreur de syntaxe".
+    #[test]
+    fn syntax_error_names_the_second_file() {
+        let second = "{ \"formatVersion\": \"0.1\", \"packages\": [\n  { \"name\": \"b\", \"classes\": [ { \"name\": \"X\"";
+        let error = Model::load(&[named("a.model.json", FIRST), named("b.model.json", second)])
+            .expect_err("truncated");
+        assert_eq!(error.file.as_deref(), Some("b.model.json"));
+        let ModelLoadErrorKind::Syntax { line, column, .. } = &error.kind else {
+            panic!("{error}");
+        };
+        assert_eq!(*line, 2);
+        assert!(*column > 0);
+        let message = error.to_string();
+        assert!(
+            message.starts_with("b.model.json: line 2, column "),
+            "{message}"
+        );
+    }
+
+    /// Scenario "Type inconnu dans le second fichier".
+    #[test]
+    fn compile_error_names_the_file_of_the_class() {
+        let second = r#"{ "formatVersion": "0.1", "packages": [ { "name": "b", "classes": [
+            { "name": "Station", "superClass": "Base",
+              "attributes": [ { "name": "altitude", "type": "Entier" } ] } ] } ] }"#;
+        let error = Model::load(&[named("a.model.json", FIRST), named("b.model.json", second)])
+            .expect_err("unknown type");
+        assert_eq!(error.file.as_deref(), Some("b.model.json"));
+        assert_eq!(
+            error.kind,
+            ModelLoadErrorKind::Compile(ModelError::UnknownType {
+                type_name: "Entier".into(),
+                class: "Station".into(),
+                feature: "altitude".into()
+            })
+        );
+        let message = error.to_string();
+        for part in ["b.model.json", "Station", "altitude", "Entier"] {
+            assert!(message.contains(part), "{part}: {message}");
+        }
+    }
+
+    /// A duplicate is reported in the file of its second declaration, a duplicate literal in the
+    /// file of its enum, a cycle of data types in the file of a data type.
+    #[test]
+    fn other_errors_name_their_file() {
+        let duplicate = r#"{ "formatVersion": "0.1", "packages": [ { "name": "b", "classes": [
+            { "name": "Base" } ] } ] }"#;
+        let error = Model::load(&[named("a", FIRST), named("b", duplicate)]).expect_err("dup");
+        assert_eq!(error.file.as_deref(), Some("b"));
+        let literal = r#"{ "formatVersion": "0.1", "packages": [ { "name": "b", "enums": [
+            { "name": "E", "literals": ["X", "X"] } ] } ] }"#;
+        let error = Model::load(&[named("a", FIRST), named("b", literal)]).expect_err("literal");
+        assert_eq!(error.file.as_deref(), Some("b"));
+        let cycle = r#"{ "formatVersion": "0.1", "packages": [ { "name": "b", "dataTypes": [
+            { "name": "X", "baseType": "Y" }, { "name": "Y", "baseType": "X" } ] } ] }"#;
+        let user = r#"{ "formatVersion": "0.1", "packages": [ { "name": "c", "classes": [
+            { "name": "C", "attributes": [ { "name": "x", "type": "X" } ] } ] } ] }"#;
+        let error = Model::load(&[named("a", FIRST), named("b", cycle), named("c", user)])
+            .expect_err("cycle");
+        assert_eq!(error.file.as_deref(), Some("b"));
+        // A data type that only leads to a cycle declared in another file: the error names a
+        // type of the cycle, in its file.
+        let lead = r#"{ "formatVersion": "0.1", "packages": [ { "name": "d", "dataTypes": [
+            { "name": "W", "baseType": "X" } ] } ] }"#;
+        let user = user.replace(r#""type": "X""#, r#""type": "W""#);
+        let error = Model::load(&[named("d", lead), named("b", cycle), named("c", &user)])
+            .expect_err("cycle");
+        assert_eq!(error.file.as_deref(), Some("b"));
+        assert_eq!(
+            error.kind,
+            ModelLoadErrorKind::Compile(ModelError::DataTypeCycle { name: "X".into() })
+        );
+    }
+
+    /// Scenario "Version inconnue".
+    #[test]
+    fn unknown_version_is_refused() {
+        let text = FIRST.replace("\"0.1\"", "\"0.2\"");
+        let error = Model::load(&[named("a.model.json", &text)]).expect_err("version");
+        assert_eq!(
+            error,
+            ModelLoadError {
+                file: Some("a.model.json".into()),
+                kind: ModelLoadErrorKind::Version {
+                    found: "0.2".into()
+                }
+            }
+        );
+        let message = error.to_string();
+        for part in ["a.model.json", "0.2", "0.1"] {
+            assert!(message.contains(part), "{part}: {message}");
+        }
+    }
+
+    /// Scenario "Fichier de modèle avec `$schema`".
+    #[test]
+    fn schema_key_is_accepted_and_ignored() {
+        let with_schema =
+            FIRST.replacen('{', r#"{ "$schema": "../../schemas/model.schema.json","#, 1);
+        let with = Model::load(&[named("a", &with_schema)]).expect("with $schema");
+        let without = Model::load(&[named("a", FIRST)]).expect("without $schema");
+        // The classes, not the whole model: the order of a `HashMap` differs from one to another.
+        assert_eq!(
+            format!("{:?}", with.classes()),
+            format!("{:?}", without.classes())
+        );
+    }
+}

@@ -1,9 +1,16 @@
 {
+  "$schema": "../../schemas/model.schema.json",
   "formatVersion": "0.1",
   "packages": [
     {
       "name": "annuaire",
       "classes": [
+        {
+          "name": "Racine",
+          "references": [
+            { "name": "annuaire", "type": "Annuaire" }
+          ]
+        },
         {
           "name": "Annuaire",
           "references": [
@@ -15,9 +22,24 @@
           "attributes": [
             { "name": "nom", "type": "String", "lowerBound": 1 },
             { "name": "prenom", "type": "String" },
-            { "name": "date_naissance", "type": "Date" }
+            { "name": "date_naissance", "type": "Date" },
+            { "name": "nombre_enfants", "type": "Int" },
+            { "name": "taille", "type": "Float", "unit": "m" },
+            { "name": "contact_autorise", "type": "Boolean" },
+            { "name": "situation", "type": "SituationFamiliale" },
+            { "name": "inscription", "type": "DateTime" },
+            { "name": "notes", "type": "TexteLong" }
           ]
         }
+      ],
+      "enums": [
+        {
+          "name": "SituationFamiliale",
+          "literals": ["CELIBATAIRE", "MARIE", "PACSE", "DIVORCE", "VEUF"]
+        }
+      ],
+      "dataTypes": [
+        { "name": "TexteLong", "baseType": "String" }
       ]
     }
   ]

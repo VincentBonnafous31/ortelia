@@ -10,7 +10,7 @@ Ce fichier guide Claude Code (claude.ai/code) dans ce dépôt.
 
 **Priorités** : rapidité et faible consommation mémoire. Fichiers jusqu'à environ 500 Mo, tables jusqu'à 100 000 lignes.
 
-**État** : incrément 0 terminé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale, version Windows validée dans le bac à sable. En cours : incrément 1 (application 1 « Annuaire des personnes »), en deux changements OpenSpec. Le premier, `stockage-dynamique` (essai S1 : métamodèle, Store, constructeur, lecteur JSON, mesures), est terminé et archivé (spécifications `metamodel`, `object-store`, `data-loading`, `storage-benchmark`) : le Store retenu est un bloc de valeurs typées par objet (`docs/essais/s1-stockage.md`). Le second, « modèle et données », sera proposé ensuite.
+**État** : incrément 0 terminé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale, version Windows validée dans le bac à sable. Incrément 1 (application 1 « Annuaire des personnes ») réalisé en deux changements OpenSpec. Le premier, `stockage-dynamique` (essai S1 : métamodèle, Store, constructeur, lecteur JSON, mesures), est terminé et archivé (spécifications `metamodel`, `object-store`, `data-loading`, `storage-benchmark`) : le Store retenu est un bloc de valeurs typées par objet (`docs/essais/s1-stockage.md`). Le second, `modele-et-donnees`, est réalisé, à archiver : `app.json` (format 0.3, `ortelia-config`), Document avec révision et journal des changements, fragments greffés sur une branche, erreurs rassemblées et diagnostics, ouverture d'une application (`AppContext::open`, `ortelia-service`), JSON Schema des fichiers de configuration (`schemas/`). Suivant : incrément 2 (vue avec une table).
 
 ## Documents
 
@@ -19,8 +19,9 @@ Ce fichier guide Claude Code (claude.ai/code) dans ce dépôt.
 | `docs/feuille-de-route.md` | Vue d'ensemble : socle (terminé), applications jalons, pistes après l'application 2 (mode design, globe 3D en bibliothèque séparée…) |
 | `docs/feuille-de-route-annuaire.md` | Application 1 « Annuaire des personnes » : incréments 1 à 6 |
 | `docs/feuille-de-route-editeur-modeles.md` | Application 2 « Éditeur de modèles » : incréments 7 et 8 |
-| `docs/architecture-couches.md` | Couches, couche de présentation sans dépendance UI, interfaces egui / GPUI interchangeables (D25–D27) ; lecture des données : lecteur de format, correspondance, constructeur, « lire puis intégrer » (D28–D30) |
-| `examples/annuaire/` | Application 1 : `app.json` (format 0.2), `annuaire.model.json`, `personnes.json` |
+| `docs/architecture-couches.md` | Couches, couche de présentation sans dépendance UI, interfaces egui / GPUI interchangeables (D25–D27) ; lecture des données : lecteur de format, correspondance, constructeur, fragment greffé sur sa branche (D28–D30) ; Document seul à modifier le Store (D31) ; racine et sources de `app.json` (D32) |
+| `examples/annuaire/` | Application 1 : `app.json` (format 0.3 : modèle, racine `Racine`, source `personnes` de cible `/annuaire/personnes`), `annuaire.model.json`, `personnes.json` |
+| `schemas/` | JSON Schema (draft 7) de `app.json` et des `*.model.json`, générés par `cargo xtask gen-schemas` ; les exemples y renvoient par leur clé `$schema` |
 | `examples/model-editor/metamodel.model.json` | Ébauche du métamodèle décrit avec lui-même (application 2) ; ne compile pas encore (attribut multivalué `literals`) |
 | `docs/essais/s1-stockage.md` | Essai S1 : conditions, mesures des deux Stores comparés, analyse, seuils et choix du Store |
 | `examples/reseau-meteo/` | Essai S1 : modèle d'essai `reseau.model.json` (réseau de stations météo, profondeur 4, listes polymorphes, zones découpées en mailles) et petit fichier conforme `reseau-exemple.json` |
@@ -35,19 +36,27 @@ Cargo.lock              versionné (application)
 rust-toolchain.toml     version de Rust fixée (1.99), avec rustfmt et clippy
 .cargo/config.toml      alias `cargo xtask`
 crates/
-  ortelia-model/        couche 0 : métamodèle, stockage dynamique (Store), constructeur
-  ortelia-config/       couche 1 : format de app.json
+  ortelia-model/        couche 0 : métamodèle, stockage dynamique (Store), Document, constructeur
+  ortelia-config/       couche 1 : format de app.json, vérification contre le modèle
   ortelia-expr/         couche 1 : expressions
-  ortelia-service/      couche 2 : sources (lecteur JSON), tâches de fond, validation, plugins
+  ortelia-service/      couche 2 : ouverture d'une application, sources (lecteur JSON), plus tard tâches de fond et plugins
   ortelia-presentation/ couche 3 : view-models, logique d'affichage
   ortelia-ui-egui/      couche 4 : dessin egui
   ortelia/              couche 5 : exécutable (ligne de commande, journalisation)
-xtask/                  outil du dépôt : vérification des couches, générateur de données d'essai
+xtask/                  outil du dépôt : vérification des couches, générateur de données d'essai, JSON Schema
+schemas/                JSON Schema générés (versionnés)
 ```
 
 - Une crate hérite des réglages communs (`version.workspace = true`, `[lints] workspace = true`…) et déclare ses dépendances par `nom.workspace = true` : les versions ne s'écrivent que dans le `Cargo.toml` racine.
 - `unsafe_code = "deny"` pour tout le workspace : une exception éventuelle s'écrit localement avec `#![allow(unsafe_code)]`.
 - Pour changer de version de Rust : modifier `rust-toolchain.toml` et `rust-version` dans un même commit.
+
+## JSON Schema des fichiers de configuration
+
+- `cargo xtask gen-schemas` écrit `schemas/app.schema.json` et `schemas/model.schema.json`, générés par schemars depuis les types serde qui lisent ces fichiers (`AppFile`, `ModelFile`). Après toute modification de ces types, le relancer et versionner le résultat.
+- `cargo xtask gen-schemas --check` compare sans écrire : code 1 en citant le fichier périmé, 0 sinon. La CI (Linux) et `tools/check.sh` le lancent.
+- Les dérivations `JsonSchema` sont derrière la feature `json-schema` de `ortelia-model` et `ortelia-config`, que seul `xtask` active : l'exécutable est compilé sans schemars (`cargo tree -p ortelia -i schemars` ne le trouve pas).
+- Les commentaires de doc (`///`) des types de fichiers deviennent les descriptions des schémas, montrées par l'éditeur : les écrire pour l'utilisateur, et mettre les détails d'implémentation en commentaires `//`.
 
 ## Essai S1 : données générées et mesures
 
@@ -160,7 +169,7 @@ Sous Windows, les deux scripts tournent dans WSL2 : `wsl -- bash -l tools/check.
 
 - Branche `main`, dépôt public `https://github.com/VincentBonnafous31/ortelia` (remote `origin`).
 - CI GitHub Actions (`.github/workflows/ci.yml`), à chaque poussée sur `main`, à chaque pull request vers `main` et à la demande :
-  - job `checks`, sous Linux et Windows, tout en `--locked` : `cargo fmt --all --check` (Linux), `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo test --workspace --locked`, `cargo xtask check-layers`, puis le test de fumée (Linux sous Xvfb, bloquant ; Windows non bloquant) ;
+  - job `checks`, sous Linux et Windows, tout en `--locked` : `cargo fmt --all --check` (Linux), `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo test --workspace --locked`, `cargo xtask check-layers`, `cargo xtask gen-schemas --check` (Linux), puis le test de fumée (Linux sous Xvfb, bloquant ; Windows non bloquant) ;
   - job `binaries`, hors pull requests : compilation release, `ortelia --version`, puis artefacts `ortelia-linux-x86_64` et `ortelia-windows-x86_64` (30 jours), téléchargeables depuis la page de l'exécution (`gh run download <id>`). C'est la seule source de la version Windows.
   - Seul `main` enregistre le cache Cargo (`Swatinem/rust-cache`).
 - Avant de pousser, lancer la même séquence en local : `tools/check.sh` (skill `/verifier`). Il vérifie aussi les lints propres à Windows (code réservé à Linux par `#[cfg]`, donc mort sous Windows) par Clippy pour la cible `x86_64-pc-windows-msvc`, sans édition de liens, donc sans les outils MSVC. La cible s'installe une fois : `rustup target add x86_64-pc-windows-msvc`.

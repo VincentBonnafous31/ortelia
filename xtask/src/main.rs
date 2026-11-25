@@ -2,10 +2,12 @@
 //!
 //! Tasks:
 //! - `check-layers`: checks the layer rule of the workspace (see `layers.rs`);
-//! - `gen-data`: writes a data file for the S1 storage trial (see `gen_data.rs`).
+//! - `gen-data`: writes a data file for the S1 storage trial (see `gen_data.rs`);
+//! - `gen-schemas`: writes the JSON Schemas of the configuration files (see `schemas.rs`).
 
 mod gen_data;
 mod layers;
+mod schemas;
 
 use std::collections::HashMap;
 use std::process::ExitCode;
@@ -18,7 +20,9 @@ const USAGE: &str = "usage: cargo xtask <task>
 
 tasks:
   check-layers   check the layer rule of the workspace
-  gen-data       write a data file for the S1 storage trial (see `cargo xtask gen-data --help`)";
+  gen-data       write a data file for the S1 storage trial (see `cargo xtask gen-data --help`)
+  gen-schemas    write the JSON Schemas of app.json and of the model files in schemas/;
+                 with --check, only check that they are up to date";
 
 fn main() -> ExitCode {
     // Skip the program name, like argv[0] in C.
@@ -26,6 +30,8 @@ fn main() -> ExitCode {
     match args.first().map(String::as_str) {
         Some("check-layers") if args.len() == 1 => check_layers(),
         Some("gen-data") => gen_data(&args[1..]),
+        Some("gen-schemas") if args.len() == 1 => gen_schemas(),
+        Some("gen-schemas") if args.len() == 2 && args[1] == "--check" => check_schemas(),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
@@ -54,6 +60,34 @@ fn gen_data(args: &[String]) -> ExitCode {
             eprintln!("error: cannot write {}: {error}", options.out.display());
             ExitCode::FAILURE
         }
+    }
+}
+
+fn gen_schemas() -> ExitCode {
+    match schemas::write(&schemas::repository_root()) {
+        Ok(paths) => {
+            for path in paths {
+                println!("gen-schemas: {path}");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("error: cannot write the schemas: {error}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn check_schemas() -> ExitCode {
+    let stale = schemas::stale(&schemas::repository_root());
+    for path in &stale {
+        println!("error: {path} is missing or out of date: run `cargo xtask gen-schemas`");
+    }
+    if stale.is_empty() {
+        println!("gen-schemas: schemas up to date");
+        ExitCode::SUCCESS
+    } else {
+        ExitCode::FAILURE
     }
 }
 

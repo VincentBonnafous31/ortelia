@@ -2,4 +2,5 @@
 //!
 //! Depends on the model, configuration and expression layers.
 
+pub mod app;
 pub mod json;
