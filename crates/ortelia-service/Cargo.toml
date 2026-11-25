@@ -11,6 +11,17 @@ publish.workspace = true
 ortelia-model.workspace = true
 ortelia-config.workspace = true
 ortelia-expr.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+fastrand.workspace = true
+
+# The S1 benchmark (see examples/s1/main.rs). `test = true`: `cargo test` also runs its tests.
+[[example]]
+name = "s1"
+path = "examples/s1/main.rs"
+test = true

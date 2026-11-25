@@ -1,6 +1,6 @@
 # Architecture en couches : une interface interchangeable
 
-*2026-11-23. Proposé, à valider. Objectif fixé par le porteur du projet : séparer fortement les couches modèle et service, pour pouvoir remplacer l'interface (egui ↔ GPUI), voire disposer de deux implémentations et choisir laquelle utiliser. Questions Q18 à Q20 tranchées le même jour : egui est la seule interface réalisée, sans essai comparatif (§ 8).*
+*2026-11-23. Proposé, à valider. Objectif fixé par le porteur du projet : séparer fortement les couches modèle et service, pour pouvoir remplacer l'interface (egui ↔ GPUI), voire disposer de deux implémentations et choisir laquelle utiliser. Questions Q18 à Q20 tranchées le même jour : egui est la seule interface réalisée, sans essai comparatif (§ 8). Complété le 2026-11-25 : lecture des données (§ 9, D28 à D30).*
 
 ---
 
@@ -34,7 +34,7 @@ ortelia  (exécutable)        choisit l'interface (features Cargo, option --ui)
           │
   ortelia-config   ortelia-expr      format de app.json et migrations ; expressions
           │
-  ortelia-model              métamodèle, stockage dynamique, API de modification, révisions
+  ortelia-model              métamodèle, stockage dynamique, constructeur, API de modification, révisions
 
   ortelia-plugin-sdk         interface stable pour les plugins (ne dépend que du modèle)
 ```
@@ -160,3 +160,34 @@ Même sans seconde interface, la couche de présentation reste utile : elle se t
 
 **Q20.** Faut-il réaliser l'essai S7 (même tranche avec egui et GPUI) avant de choisir la première interface ?
 > Non, et aucun essai S7 n'est prévu. egui est la seule interface réalisée.
+
+---
+
+## 9. Lecture des données : format, correspondance, constructeur
+
+*2026-11-25. Décisions prises en préparant l'incrément 1 (changement OpenSpec `stockage-dynamique`).*
+
+```
+  fichier JSON ---> lecteur JSON ---+
+  (XML plus tard)   (ortelia-service)|
+                                     +--> correspondance --+
+                                          (identite pour   |
+                                          l'instant)       v
+  plugin de lecture ---------------------------------> constructeur ---> Store neuf
+  (connait le modele)                                (ortelia-model)       |
+                                                                           v
+                                              integration dans le contexte de l'application :
+                                              remplacement (une entree), puis fusion (REST)
+```
+
+- **Le lecteur de format** ne connaît que la syntaxe. Le lecteur JSON lit en flux, sans arbre intermédiaire.
+- **La correspondance** relie la forme du fichier à celle du modèle. La forme du fichier ne dicte pas celle du modèle : des positions GeoJSON `[lon, lat]` peuvent devenir des objets `Point`. Par défaut, c'est la correspondance identité : nom de clé = nom d'attribut ou de référence, `_type_` pour la classe concrète. Des règles déclarées dans `app.json` viendront plus tard (`feuille-de-route.md`, pistes).
+- **Le constructeur** est la seule API de création des objets. Le lecteur l'appelle dans l'ordre du fichier (début d'objet, valeurs, fin d'objet), comme un `ContentHandler` SAX. Il convertit les valeurs données en texte (XML, dates JSON) selon le type de l'attribut : il n'y a qu'une conversion, pour tous les formats. Il produit aussi les erreurs, avec le chemin de la donnée dans le modèle.
+
+**Décisions**
+
+- **D28.** La lecture des données passe par trois étages : lecteur de format, correspondance, constructeur. Le constructeur, dans `ortelia-model`, est la seule voie de création des objets pour tous les lecteurs.
+- **D29.** Un plugin de lecture connaît le modèle et appelle directement le constructeur. L'interface C du constructeur ne fait passer que des identifiants, des textes et des valeurs simples ; `ortelia-plugin-sdk` n'aura besoin que de `ortelia-model`.
+- **D30.** Lire, puis intégrer.
+  - Un lecteur remplit toujours un Store neuf, sans liste des changements. La lecture peut donc se faire en tâche de fond, sans toucher aux données affichées.
+  - L'intégration dans le contexte de l'application enregistre les changements : une seule entrée grossière pour un remplacement (incrément 1), les seules vraies différences pour une fusion, par rapprochement sur l'identifiant métier (avec la source REST).

@@ -10,7 +10,7 @@ Ce fichier guide Claude Code (claude.ai/code) dans ce dépôt.
 
 **Priorités** : rapidité et faible consommation mémoire. Fichiers jusqu'à environ 500 Mo, tables jusqu'à 100 000 lignes.
 
-**État** : incrément 0 terminé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale, version Windows validée dans le bac à sable. Prochaine étape : incrément 1 (application 1 « Annuaire des personnes »), qui commence par l'essai technique S1.
+**État** : incrément 0 terminé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale, version Windows validée dans le bac à sable. En cours : incrément 1 (application 1 « Annuaire des personnes »), en deux changements OpenSpec. Le premier, `stockage-dynamique` (essai S1 : métamodèle, Store, constructeur, lecteur JSON, mesures), est réalisé sur sa branche : le Store retenu est un bloc de valeurs typées par objet (`docs/essais/s1-stockage.md`). Le second, « modèle et données », sera proposé ensuite.
 
 ## Documents
 
@@ -19,9 +19,11 @@ Ce fichier guide Claude Code (claude.ai/code) dans ce dépôt.
 | `docs/feuille-de-route.md` | Vue d'ensemble : socle (terminé), applications jalons, pistes après l'application 2 (mode design, globe 3D en bibliothèque séparée…) |
 | `docs/feuille-de-route-annuaire.md` | Application 1 « Annuaire des personnes » : incréments 1 à 6 |
 | `docs/feuille-de-route-editeur-modeles.md` | Application 2 « Éditeur de modèles » : incréments 7 et 8 |
-| `docs/architecture-couches.md` | Couches, couche de présentation sans dépendance UI, interfaces egui / GPUI interchangeables (D25–D27) |
+| `docs/architecture-couches.md` | Couches, couche de présentation sans dépendance UI, interfaces egui / GPUI interchangeables (D25–D27) ; lecture des données : lecteur de format, correspondance, constructeur, « lire puis intégrer » (D28–D30) |
 | `examples/annuaire/` | Application 1 : `app.json` (format 0.2), `annuaire.model.json`, `personnes.json` |
-| `examples/model-editor/metamodel.model.json` | Ébauche du métamodèle décrit avec lui-même (application 2) |
+| `examples/model-editor/metamodel.model.json` | Ébauche du métamodèle décrit avec lui-même (application 2) ; ne compile pas encore (attribut multivalué `literals`) |
+| `docs/essais/s1-stockage.md` | Essai S1 : conditions, mesures des deux Stores comparés, analyse, seuils et choix du Store |
+| `examples/reseau-meteo/` | Essai S1 : modèle d'essai `reseau.model.json` (réseau de stations météo, profondeur 4, listes polymorphes, zones découpées en mailles) et petit fichier conforme `reseau-exemple.json` |
 
 `docs/cadrage-prive/` contient des notes de conception privées : ne jamais le versionner, ne jamais citer son contenu dans un fichier versionné.
 
@@ -33,19 +35,46 @@ Cargo.lock              versionné (application)
 rust-toolchain.toml     version de Rust fixée (1.99), avec rustfmt et clippy
 .cargo/config.toml      alias `cargo xtask`
 crates/
-  ortelia-model/        couche 0 : métamodèle, stockage dynamique
+  ortelia-model/        couche 0 : métamodèle, stockage dynamique (Store), constructeur
   ortelia-config/       couche 1 : format de app.json
   ortelia-expr/         couche 1 : expressions
-  ortelia-service/      couche 2 : sources, tâches de fond, validation, plugins
+  ortelia-service/      couche 2 : sources (lecteur JSON), tâches de fond, validation, plugins
   ortelia-presentation/ couche 3 : view-models, logique d'affichage
   ortelia-ui-egui/      couche 4 : dessin egui
   ortelia/              couche 5 : exécutable (ligne de commande, journalisation)
-xtask/                  outil du dépôt : vérification des couches
+xtask/                  outil du dépôt : vérification des couches, générateur de données d'essai
 ```
 
 - Une crate hérite des réglages communs (`version.workspace = true`, `[lints] workspace = true`…) et déclare ses dépendances par `nom.workspace = true` : les versions ne s'écrivent que dans le `Cargo.toml` racine.
 - `unsafe_code = "deny"` pour tout le workspace : une exception éventuelle s'écrit localement avec `#![allow(unsafe_code)]`.
 - Pour changer de version de Rust : modifier `rust-toolchain.toml` et `rust-version` dans un même commit.
+
+## Essai S1 : données générées et mesures
+
+Générateur de fichiers conformes au modèle d'essai `examples/reseau-meteo/reseau.model.json` :
+
+```bash
+mkdir -p ~/s1
+cargo xtask gen-data --size 10M --out ~/s1/reseau-10M.json
+```
+
+- `--size` (obligatoire) : taille visée, avec les suffixes `K`, `M` et `G` (puissances de 1024). Le fichier la dépasse de moins d'un objet.
+- `--out` (obligatoire) : fichier à écrire.
+- `--seed` (1 par défaut) : graine ; les mêmes options donnent un fichier identique, octet pour octet.
+- `--text` (1.0 par défaut) : facteur sur la longueur des textes longs (`description`, `compte_rendu`, `texte`) ; à 0, ils sont omis (profil « numérique »).
+- `--late-type` (0.0 par défaut) : part d'objets des listes polymorphes dont `_type_` vient après le premier attribut (ils passent par un arbre intermédiaire à la lecture).
+- Les fichiers vont dans `~/s1/`, dans le système de fichiers Linux de WSL2, et jamais sous `/mnt/c` : le disque Windows y est lent (il fausserait les temps de chargement), et des fichiers de 500 Mo n'ont rien à faire dans le dépôt.
+
+Programme de mesure (exemple `s1` de `ortelia-service`), toujours en compilation release :
+
+```bash
+cargo run --release -p ortelia-service --example s1 -- all ~/s1/reseau-10M.json
+```
+
+- `all <fichier> [--only floor,v0,store]` : lance chaque cas dans un processus à part (le programme se relance lui-même), pour que le pic de mémoire d'un cas ne fausse pas le suivant, puis affiche un tableau Markdown (une ligne par mesure et par implémentation). `--only floor,store` écarte V0, qui prend environ 11 fois la taille du fichier en mémoire.
+- `case <floor|v0|store> <stream|buffer|count> <fichier>` : un seul cas, une ligne par mesure. `stats <fichier>` : nombre d'objets par classe.
+- Implémentations : plancher (`IgnoredAny`, sans construction), V0 (`serde_json::Value`, point de repère), et le Store. Le second Store comparé par l'essai a été supprimé ; ses mesures restent dans `docs/essais/s1-stockage.md`. Mesures : C (chargement), M (mémoire, lue dans `/proc/self/status`, « non disponible » hors Linux), A (accès et navigation), E (modification) ; leur liste est dans `crates/ortelia-service/examples/s1/`.
+- `cargo test` exécute aussi les tests de l'exemple, sur `examples/reseau-meteo/reseau-exemple.json`.
 
 ## Règles
 

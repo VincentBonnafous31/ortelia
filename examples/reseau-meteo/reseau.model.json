@@ -1,0 +1,215 @@
+{
+  "formatVersion": "0.1",
+  "packages": [
+    {
+      "name": "reseau",
+      "classes": [
+        {
+          "name": "Reseau",
+          "attributes": [
+            { "name": "nom", "type": "String" }
+          ],
+          "references": [
+            { "name": "stations", "type": "Station", "upperBound": -1 },
+            { "name": "zones", "type": "ZoneAlerte", "upperBound": -1 }
+          ]
+        },
+        {
+          "name": "Station",
+          "attributes": [
+            { "name": "code", "type": "Code", "lowerBound": 1, "identifier": true },
+            { "name": "nom", "type": "String", "lowerBound": 1 },
+            { "name": "latitude", "type": "Float", "unit": "deg" },
+            { "name": "longitude", "type": "Float", "unit": "deg" },
+            { "name": "altitude", "type": "Int", "unit": "m" },
+            { "name": "mise_en_service", "type": "Date" },
+            { "name": "active", "type": "Boolean", "defaultValue": "true" },
+            { "name": "categorie", "type": "CategorieStation" },
+            { "name": "description", "type": "String" }
+          ],
+          "references": [
+            { "name": "equipements", "type": "Equipement", "upperBound": -1 },
+            { "name": "interventions", "type": "Intervention", "upperBound": -1 }
+          ]
+        },
+        {
+          "name": "Equipement",
+          "abstract": true,
+          "attributes": [
+            { "name": "numero_serie", "type": "String", "lowerBound": 1 },
+            { "name": "modele", "type": "String" },
+            { "name": "installe_le", "type": "Date" }
+          ]
+        },
+        {
+          "name": "Capteur",
+          "superClass": "Equipement",
+          "abstract": true,
+          "attributes": [
+            { "name": "frequence_s", "type": "Int", "unit": "s" }
+          ],
+          "references": [
+            { "name": "mesures", "type": "Mesure", "upperBound": -1 }
+          ]
+        },
+        {
+          "name": "Thermometre",
+          "superClass": "Capteur",
+          "attributes": [
+            { "name": "plage_min", "type": "Float", "unit": "degC" },
+            { "name": "plage_max", "type": "Float", "unit": "degC" }
+          ]
+        },
+        {
+          "name": "Anemometre",
+          "superClass": "Capteur",
+          "attributes": [
+            { "name": "hauteur_mat", "type": "Float", "unit": "m" }
+          ]
+        },
+        {
+          "name": "Pluviometre",
+          "superClass": "Capteur",
+          "attributes": [
+            { "name": "surface_cm2", "type": "Float", "unit": "cm2" }
+          ]
+        },
+        {
+          "name": "Camera",
+          "superClass": "Equipement",
+          "attributes": [
+            { "name": "resolution", "type": "String" },
+            { "name": "orientation_deg", "type": "Float", "unit": "deg" }
+          ]
+        },
+        {
+          "name": "Mesure",
+          "abstract": true,
+          "attributes": [
+            { "name": "instant", "type": "DateTime", "lowerBound": 1 }
+          ],
+          "references": [
+            { "name": "annotations", "type": "Annotation", "upperBound": -1 }
+          ]
+        },
+        {
+          "name": "Releve",
+          "superClass": "Mesure",
+          "attributes": [
+            { "name": "valeur", "type": "Float" },
+            { "name": "qualite", "type": "Qualite" }
+          ]
+        },
+        {
+          "name": "Lacune",
+          "superClass": "Mesure",
+          "attributes": [
+            { "name": "fin", "type": "DateTime" },
+            { "name": "cause", "type": "String" }
+          ]
+        },
+        {
+          "name": "Annotation",
+          "attributes": [
+            { "name": "auteur", "type": "String" },
+            { "name": "texte", "type": "String" },
+            { "name": "creee_le", "type": "DateTime" }
+          ]
+        },
+        {
+          "name": "Intervention",
+          "abstract": true,
+          "attributes": [
+            { "name": "date", "type": "Date", "lowerBound": 1 },
+            { "name": "technicien", "type": "String" },
+            { "name": "compte_rendu", "type": "String" }
+          ]
+        },
+        {
+          "name": "Maintenance",
+          "superClass": "Intervention",
+          "attributes": [
+            { "name": "duree_h", "type": "Float", "unit": "h" }
+          ]
+        },
+        {
+          "name": "Panne",
+          "superClass": "Intervention",
+          "attributes": [
+            { "name": "gravite", "type": "Gravite" },
+            { "name": "resolue", "type": "Boolean" }
+          ]
+        },
+        {
+          "name": "Etalonnage",
+          "superClass": "Intervention",
+          "attributes": [
+            { "name": "ecart", "type": "Float" }
+          ]
+        },
+        {
+          "name": "ZoneAlerte",
+          "attributes": [
+            { "name": "code", "type": "Code", "lowerBound": 1, "identifier": true },
+            { "name": "niveau", "type": "NiveauAlerte" },
+            { "name": "debut", "type": "DateTime" },
+            { "name": "fin", "type": "DateTime" }
+          ],
+          "references": [
+            { "name": "emprise", "type": "Emprise", "lowerBound": 1, "upperBound": 1 },
+            { "name": "mailles", "type": "Maille", "upperBound": -1 }
+          ]
+        },
+        {
+          "name": "Emprise",
+          "abstract": true
+        },
+        {
+          "name": "Polygone",
+          "superClass": "Emprise",
+          "references": [
+            { "name": "sommets", "type": "Point", "upperBound": -1 }
+          ]
+        },
+        {
+          "name": "Cercle",
+          "superClass": "Emprise",
+          "attributes": [
+            { "name": "rayon_km", "type": "Float", "unit": "km" }
+          ],
+          "references": [
+            { "name": "centre", "type": "Point", "lowerBound": 1, "upperBound": 1 }
+          ]
+        },
+        {
+          "name": "Maille",
+          "attributes": [
+            { "name": "numero", "type": "Int", "lowerBound": 1 },
+            { "name": "statut", "type": "StatutMaille" },
+            { "name": "acquise_le", "type": "DateTime" }
+          ],
+          "references": [
+            { "name": "coins", "type": "Point", "upperBound": -1 }
+          ]
+        },
+        {
+          "name": "Point",
+          "attributes": [
+            { "name": "lat", "type": "Float", "unit": "deg" },
+            { "name": "lon", "type": "Float", "unit": "deg" }
+          ]
+        }
+      ],
+      "enums": [
+        { "name": "CategorieStation", "literals": ["SYNOPTIQUE", "CLIMATOLOGIQUE", "AUTOMATIQUE"] },
+        { "name": "Qualite", "literals": ["BONNE", "DOUTEUSE", "FAUSSE"] },
+        { "name": "Gravite", "literals": ["MINEURE", "MAJEURE", "CRITIQUE"] },
+        { "name": "NiveauAlerte", "literals": ["VERT", "JAUNE", "ORANGE", "ROUGE"] },
+        { "name": "StatutMaille", "literals": ["A_ACQUERIR", "PROGRAMMEE", "ACQUISE", "REJETEE"] }
+      ],
+      "dataTypes": [
+        { "name": "Code", "baseType": "String", "pattern": "^[A-Z0-9-]+$", "maxLength": 16 }
+      ]
+    }
+  ]
+}
