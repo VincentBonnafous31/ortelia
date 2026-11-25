@@ -10,7 +10,7 @@ Ce fichier guide Claude Code (claude.ai/code) dans ce dépôt.
 
 **Priorités** : rapidité et faible consommation mémoire. Fichiers jusqu'à environ 500 Mo, tables jusqu'à 100 000 lignes.
 
-**État** : incrément 0 terminé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale, version Windows validée dans le bac à sable. En cours : incrément 1 (application 1 « Annuaire des personnes »), en deux changements OpenSpec. Le premier, `stockage-dynamique` (essai S1 : métamodèle, Store, constructeur, lecteur JSON, mesures), est réalisé sur sa branche : le Store retenu est un bloc de valeurs typées par objet (`docs/essais/s1-stockage.md`). Le second, « modèle et données », sera proposé ensuite.
+**État** : incrément 0 terminé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale, version Windows validée dans le bac à sable. En cours : incrément 1 (application 1 « Annuaire des personnes »), en deux changements OpenSpec. Le premier, `stockage-dynamique` (essai S1 : métamodèle, Store, constructeur, lecteur JSON, mesures), est terminé et archivé (spécifications `metamodel`, `object-store`, `data-loading`, `storage-benchmark`) : le Store retenu est un bloc de valeurs typées par objet (`docs/essais/s1-stockage.md`). Le second, « modèle et données », sera proposé ensuite.
 
 ## Documents
 
