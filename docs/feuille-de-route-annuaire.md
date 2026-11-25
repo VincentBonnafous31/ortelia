@@ -1,6 +1,6 @@
 # Feuille de route — Application 1 « Annuaire des personnes »
 
-*2026-11-24. Proposé, à valider. Vue d'ensemble et principes : [`feuille-de-route.md`](feuille-de-route.md).*
+*2026-11-24, incrément 1 précisé le 2026-11-25. Proposé, à valider. Vue d'ensemble et principes : [`feuille-de-route.md`](feuille-de-route.md).*
 
 Le modèle et les données d'abord, sans interface ; puis une table, un formulaire en lecture seule, la langue, l'édition et les contraintes. Chaque incrément ajoute une brique qu'on peut voir ou tester.
 
@@ -21,19 +21,53 @@ Le modèle et les données d'abord, sans interface ; puis une table, un formulai
 
 Aucune interface : on charge le modèle, `app.json` et les personnes, et on vérifie les données par des tests unitaires. C'est la base de tout le reste, et l'essai S1 permet d'itérer sur le stockage avant de bâtir dessus.
 
-Essai technique, en début d'incrément :
-- S1 : stockage dynamique, avec un fichier généré d'environ 500 Mo (temps de chargement, mémoire, accès aux attributs).
+L'incrément compte deux changements OpenSpec :
 
-Contenu :
-- Métamodèle intégré : packages, classes avec héritage simple, attributs, contenance, énumérés, types de données.
-- Modèle de l'annuaire enrichi d'un attribut par type de donnée (entier, décimal, booléen, énuméré, date-heure) et d'un texte long. S1 se mesure ainsi sur tous les types, et le formulaire de l'incrément 3 a de quoi afficher chacun de ses widgets. Les données d'exemple suivent.
-- Lecture des fichiers `*.model.json` et de `app.json`, avec erreurs claires (clés inconnues, références introuvables). À ce stade, `app.json` ne contient que `model` et `sources`.
-- Lecture des données JSON dans le stockage dynamique (`target`, `_type_`). Les données sont validées par le modèle lui-même (attribut inconnu, mauvais type, attribut obligatoire absent) : pas de JSON Schema pour les données.
-- Création, lecture, modification et suppression d'objets, couvertes par des tests unitaires.
-- Notification des modifications : toute modification passe par l'API du stockage, qui tient un numéro de révision et la liste des changements (objet, attribut, ancienne et nouvelle valeur). La présentation la consultera pour savoir qu'un cache est périmé, par exemple l'index trié de la table ; la même liste servira à Appliquer / Annuler et à l'indicateur « modifié » (voir `architecture-couches.md`, § 3). Mécanisme à arrêter dans la conception, testé sans interface.
-- JSON Schema des fichiers de configuration (`app.json`, `*.model.json`), généré depuis les types Rust : validation et autocomplétion dans l'éditeur de texte tant que ces fichiers s'écrivent à la main.
+| Changement | Contenu |
+|---|---|
+| `stockage-dynamique` (essai S1) | métamodèle, Store d'objets, constructeur, lecteur JSON ; mesures et choix du stockage |
+| « modèle et données » (à proposer) | `app.json`, erreurs claires, validation par le modèle, modification et notification, JSON Schema |
 
-**Fini quand** : mesures de S1 consignées et choix du stockage arrêté ; le modèle, `app.json` et `personnes.json` se chargent, et des fichiers fautifs produisent des erreurs claires ; les tests de création, modification, suppression et notification passent.
+### Essai S1 : stockage dynamique
+
+- **Un modèle d'essai représentatif**, distinct de l'annuaire : un réseau de stations météo (`examples/reseau-meteo/`).
+  - Arbre de contenance de profondeur 4, listes polymorphes, héritage sur trois niveaux, tous les types de base.
+  - Des milliers de zones (polygones ou cercles) découpées en mailles de 4 sommets, comme les données qu'affichera une carte.
+- **Des fichiers générés de 500 Mo** (`cargo xtask gen-data`), avec un profil « texte » et un profil « numérique ».
+- **Deux implémentations centrées sur l'objet**, et non une table par classe, derrière la même API :
+  - un bloc de valeurs typées par objet ;
+  - un tas d'objets, dont les cases sont décrites par la classe.
+- **Mesures** : mémoire (pic, après chargement, allocations), temps de chargement, accès aux attributs et navigation, modification.
+- **Critères, dans l'ordre** :
+  1. accès et navigation, qui feront la performance de l'affichage (tri des tables, extraction des polygones de la carte, expressions) ;
+  2. mémoire ;
+  3. chargement.
+
+  À résultats proches, on prend la variante la plus simple. Les seuils seront fixés au vu des résultats.
+- **Résultat** (`docs/essais/s1-stockage.md`) : le bloc de valeurs typées par objet est retenu, devenu le type `Store`. Il est le plus rapide pour naviguer (remontée vers le conteneur, extraction des sommets), au prix d'environ 1,5 fois la taille du fichier en mémoire, contre 0,85 fois pour le tas d'objets.
+
+### Contenu de l'incrément
+
+- **Métamodèle intégré** (changement 1) : packages, classes avec héritage simple, attributs, contenance, énumérés, types de données.
+- **Modèle de l'annuaire enrichi** (changement 2) : un attribut par type de donnée (entier, décimal, booléen, énuméré, date-heure) et un texte long, pour que le formulaire de l'incrément 3 ait de quoi afficher chacun de ses widgets. Les données d'exemple suivent.
+- **Lecture des fichiers de modèle** (changement 1), puis **lecture de `app.json`** (changement 2), avec des erreurs claires : clés inconnues, références introuvables. À ce stade, `app.json` ne contient que `model` et `sources`.
+- **Lecture des données en trois étages** (`architecture-couches.md`, § 9) : un lecteur de format, une couche de correspondance, puis un constructeur, seule API de création des objets. À l'incrément 1, il n'y a qu'un lecteur JSON en flux et la correspondance identité : nom de clé = nom d'attribut, `_type_` pour la classe concrète (changement 1), et `target` pour la partie de la racine qu'alimente une source (changement 2).
+- **Validation des données par le modèle lui-même** (changement 2), sans JSON Schema pour les données :
+  - attribut inconnu ou valeur de mauvais type : le chargement est refusé, et toutes les erreurs sont rassemblées (avec un plafond et le total), chacune avec son chemin dans le modèle ;
+  - attribut obligatoire absent : l'objet est chargé, avec un diagnostic ;
+  - le message montré à l'utilisateur peut citer la valeur fautive, le journal jamais.
+- **Lire puis intégrer** (changement 2) :
+  - un lecteur remplit toujours un Store neuf, sans liste des changements ;
+  - l'intégration dans le contexte de l'application est un remplacement, qui ne produit qu'une seule entrée grossière dans la liste des changements ;
+  - la fusion avec des objets existants viendra avec la source REST.
+- **Création, lecture, modification et suppression d'objets**, couvertes par des tests unitaires (changements 1 et 2).
+- **Notification des modifications** (changement 2) : toute modification passe par l'API du stockage, qui tient un numéro de révision et la liste des changements (objet, attribut, ancienne et nouvelle valeur).
+  - La présentation la consultera pour savoir qu'un cache est périmé, par exemple l'index trié de la table.
+  - La même liste servira à Appliquer / Annuler et à l'indicateur « modifié » (voir `architecture-couches.md`, § 3).
+  - Mécanisme à arrêter dans la conception, testé sans interface.
+- **JSON Schema des fichiers de configuration** (`app.json`, `*.model.json`, changement 2), généré depuis les types Rust : validation et autocomplétion dans l'éditeur de texte, tant que ces fichiers s'écrivent à la main.
+
+**Fini quand** : mesures de S1 consignées et choix du stockage arrêté (changement 1) ; le modèle, `app.json` et `personnes.json` se chargent, et des fichiers fautifs produisent des erreurs claires ; les tests de création, modification, suppression et notification passent (changement 2).
 
 ---
 
@@ -102,7 +136,7 @@ Essai technique, en début d'incrément :
 - S2 : langage d'expressions, Rhai ou CEL.
 
 Contenu :
-- Langage d'expressions (`ortelia-expr`).
+- Langage d'expressions (`ortelia-expr`). C'est le même langage qui servira plus tard aux conditions de la correspondance déclarative (`feuille-de-route.md`, pistes).
 - Contraintes simples déclarées dans le modèle, avec leurs sévérités (`ERROR`, `WARNING`, `INFO`).
 - Affichage des contraintes non respectées dans le panneau de propriétés.
 

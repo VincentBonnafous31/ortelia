@@ -1,8 +1,10 @@
 //! Repository tool, run with `cargo xtask <task>` (alias defined in .cargo/config.toml).
 //!
 //! Tasks:
-//! - `check-layers`: checks the layer rule of the workspace (see `layers.rs`).
+//! - `check-layers`: checks the layer rule of the workspace (see `layers.rs`);
+//! - `gen-data`: writes a data file for the S1 storage trial (see `gen_data.rs`).
 
+mod gen_data;
 mod layers;
 
 use std::collections::HashMap;
@@ -12,17 +14,46 @@ use cargo_metadata::{CargoOpt, DependencyKind, Metadata, MetadataCommand};
 
 use layers::{DepKind, Graph};
 
-const USAGE: &str =
-    "usage: cargo xtask <task>\n\ntasks:\n  check-layers   check the layer rule of the workspace";
+const USAGE: &str = "usage: cargo xtask <task>
+
+tasks:
+  check-layers   check the layer rule of the workspace
+  gen-data       write a data file for the S1 storage trial (see `cargo xtask gen-data --help`)";
 
 fn main() -> ExitCode {
     // Skip the program name, like argv[0] in C.
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if args == ["check-layers"] {
-        check_layers()
-    } else {
-        eprintln!("{USAGE}");
-        ExitCode::from(2)
+    match args.first().map(String::as_str) {
+        Some("check-layers") if args.len() == 1 => check_layers(),
+        Some("gen-data") => gen_data(&args[1..]),
+        _ => {
+            eprintln!("{USAGE}");
+            ExitCode::from(2)
+        }
+    }
+}
+
+fn gen_data(args: &[String]) -> ExitCode {
+    if args.iter().any(|a| a == "--help" || a == "-h") {
+        println!("{}", gen_data::USAGE);
+        return ExitCode::SUCCESS;
+    }
+    let options = match gen_data::parse_args(args) {
+        Ok(options) => options,
+        Err(message) => {
+            eprintln!("error: {message}\n\n{}", gen_data::USAGE);
+            return ExitCode::from(2);
+        }
+    };
+    match gen_data::run(&options) {
+        Ok(size) => {
+            println!("gen-data: {} ({size} bytes)", options.out.display());
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("error: cannot write {}: {error}", options.out.display());
+            ExitCode::FAILURE
+        }
     }
 }
 

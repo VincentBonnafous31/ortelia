@@ -1,0 +1,152 @@
+{
+  "nom": "Réseau d'essai",
+  "stations": [
+    {
+      "code": "BRS-01",
+      "nom": "Brest-Guipavas",
+      "latitude": 48.4442,
+      "longitude": -4.4122,
+      "altitude": 94,
+      "mise_en_service": "1985-03-12",
+      "active": true,
+      "categorie": "SYNOPTIQUE",
+      "description": "Station côtière, exposée aux vents d'ouest.\nCapteurs relevés toutes les 10 minutes.",
+      "equipements": [
+        {
+          "_type_": "Thermometre",
+          "numero_serie": "T-17",
+          "modele": "PT100",
+          "installe_le": "2019-06-01",
+          "frequence_s": 600,
+          "plage_min": -40,
+          "plage_max": 60.5,
+          "mesures": [
+            { "_type_": "Releve", "instant": "2026-03-12T10:00:00Z", "valeur": 11.0, "qualite": "BONNE" },
+            { "_type_": "Releve", "instant": "2026-03-12T10:10:00Z", "valeur": 11.4, "qualite": "BONNE" },
+            { "_type_": "Releve", "instant": "2026-03-12T10:20:00.123456Z", "valeur": 12, "qualite": "DOUTEUSE" },
+            {
+              "_type_": "Lacune",
+              "instant": "2026-03-12T10:30:00Z",
+              "fin": "2026-03-12T11:30:00Z",
+              "cause": "Coupure d'alimentation",
+              "annotations": [
+                { "auteur": "J. Le Gall", "texte": "Disjoncteur réarmé sur place.", "creee_le": "2026-03-12T12:05:00+01:00" }
+              ]
+            },
+            { "_type_": "Releve", "instant": "2026-03-12T11:40:00Z", "valeur": null, "qualite": "FAUSSE" }
+          ]
+        },
+        {
+          "numero_serie": "A-03",
+          "_type_": "Anemometre",
+          "modele": "Vaisala WMT700",
+          "frequence_s": 60,
+          "hauteur_mat": 10.0,
+          "mesures": [
+            { "_type_": "Releve", "instant": "2026-03-12T10:00:00Z", "valeur": 7.2 }
+          ]
+        },
+        {
+          "_type_": "Pluviometre",
+          "numero_serie": "P-11",
+          "frequence_s": 3600,
+          "surface_cm2": 400,
+          "mesures": []
+        },
+        {
+          "_type_": "Camera",
+          "numero_serie": "C-02",
+          "resolution": "1920x1080",
+          "orientation_deg": 270.0
+        }
+      ],
+      "interventions": [
+        { "_type_": "Maintenance", "date": "2025-11-04", "technicien": "M. Kerjean", "duree_h": 2.5, "compte_rendu": "Nettoyage de l'abri." },
+        { "_type_": "Panne", "date": "2026-01-15", "gravite": "MAJEURE", "resolue": true },
+        { "_type_": "Etalonnage", "date": "2026-02-20", "technicien": "M. Kerjean", "ecart": -0.12 }
+      ]
+    },
+    {
+      "code": "QMP-02",
+      "nom": "Quimper",
+      "latitude": 47.9753,
+      "longitude": -4.1680,
+      "altitude": 91,
+      "mise_en_service": "1992-07-01",
+      "active": false,
+      "categorie": "AUTOMATIQUE",
+      "equipements": [
+        {
+          "_type_": "Thermometre",
+          "numero_serie": "T-42",
+          "frequence_s": 600,
+          "mesures": [
+            { "_type_": "Releve", "instant": "2026-03-12T10:00:00Z", "valeur": 10.1, "qualite": "BONNE" }
+          ]
+        }
+      ],
+      "interventions": []
+    }
+  ],
+  "zones": [
+    {
+      "code": "Z-001",
+      "niveau": "ORANGE",
+      "debut": "2026-03-12T06:00:00Z",
+      "fin": "2026-03-13T06:00:00Z",
+      "emprise": {
+        "_type_": "Polygone",
+        "sommets": [
+          { "lat": 48.0, "lon": -5.0 },
+          { "lat": 48.0, "lon": -4.0 },
+          { "lat": 48.6, "lon": -4.0 },
+          { "lat": 48.6, "lon": -5.0 }
+        ]
+      },
+      "mailles": [
+        {
+          "numero": 1,
+          "statut": "ACQUISE",
+          "acquise_le": "2026-03-12T09:12:30Z",
+          "coins": [
+            { "lat": 48.0, "lon": -5.0 },
+            { "lat": 48.0, "lon": -4.5 },
+            { "lat": 48.3, "lon": -4.5 },
+            { "lat": 48.3, "lon": -5.0 }
+          ]
+        },
+        {
+          "numero": 2,
+          "statut": "PROGRAMMEE",
+          "coins": [
+            { "lat": 48.0, "lon": -4.5 },
+            { "lat": 48.0, "lon": -4.0 },
+            { "lat": 48.3, "lon": -4.0 },
+            { "lat": 48.3, "lon": -4.5 }
+          ]
+        }
+      ]
+    },
+    {
+      "code": "Z-002",
+      "niveau": "JAUNE",
+      "emprise": {
+        "_type_": "Cercle",
+        "rayon_km": 25.0,
+        "centre": { "lat": 47.9753, "lon": -4.168 }
+      },
+      "mailles": [
+        {
+          "numero": 1,
+          "statut": "A_ACQUERIR",
+          "coins": [
+            { "lat": 47.8, "lon": -4.4 },
+            { "lat": 47.8, "lon": -3.9 },
+            { "lat": 48.1, "lon": -3.9 },
+            { "lat": 48.1, "lon": -4.4 }
+          ]
+        }
+      ]
+    }
+  ]
+}

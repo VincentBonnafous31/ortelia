@@ -32,6 +32,12 @@ dirs = "6.0.0"
 eframe = "0.37.0"
 egui = "0.37.0"
 egui_kittest = "0.37.0"
+fastrand = "2.5.0"
+# Without the default features: no time zone database and no access to the system time zone.
+# Only civil dates and UTC instants are used.
+jiff = { version = "0.2.43", default-features = false, features = ["std"] }
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
 tempfile = "3.27"
 tracing = "0.1.44"
 tracing-appender = "0.2.5"

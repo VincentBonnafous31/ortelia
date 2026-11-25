@@ -9,6 +9,15 @@ publish.workspace = true
 
 [dependencies]
 cargo_metadata.workspace = true
+fastrand.workspace = true
+serde_json.workspace = true
+
+# A tool may depend on the layer crates (the reverse is forbidden): only the test that loads a
+# generated file with the test model needs them.
+[dev-dependencies]
+ortelia-model.workspace = true
+ortelia-service.workspace = true
+tempfile.workspace = true
 
 [lints]
 workspace = true

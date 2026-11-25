@@ -1,13 +1,13 @@
 # Feuille de route
 
-*2026-11-24. Proposé, à valider.*
+*2026-11-24, complété le 2026-11-25 (lecture des données, scénario de charge de la carte). Proposé, à valider.*
 
-Le développement avance par **applications jalons** : chacune est construite avec Ortelia et réutilise ce que la précédente a apporté. Chaque application a sa propre feuille de route, découpée en incréments courts. Un incrément est un changement OpenSpec (proposition → spécifications → conception → tâches → code → tests → archivage), avec des commits git. Les incréments sont numérotés à la suite d'une application à l'autre.
+Le développement avance par **applications jalons** : chacune est construite avec Ortelia et réutilise ce que la précédente a apporté. Chaque application a sa propre feuille de route, découpée en incréments courts. Un incrément donne un ou plusieurs changements OpenSpec (proposition → spécifications → conception → tâches → code → tests → archivage), avec des commits git ; un essai technique qui décide de la conception du reste forme son propre changement. Les incréments sont numérotés à la suite d'une application à l'autre.
 
 | Étape | Incréments | Feuille de route | État |
 |---|---|---|---|
 | Socle | 0 | ci-dessous | terminé |
-| Application 1 « Annuaire des personnes » | 1 à 6 | [`feuille-de-route-annuaire.md`](feuille-de-route-annuaire.md) | prochaine étape |
+| Application 1 « Annuaire des personnes » | 1 à 6 | [`feuille-de-route-annuaire.md`](feuille-de-route-annuaire.md) | en cours : incrément 1 |
 | Application 2 « Éditeur de modèles » | 7 et 8 | [`feuille-de-route-editeur-modeles.md`](feuille-de-route-editeur-modeles.md) | à venir |
 
 La suite se décidera à la fin de l'application 2. Les pistes connues sont en fin de document.
@@ -71,6 +71,30 @@ Le globe 3D et la carte 2D (un seul moteur pour les deux) seront développés co
 - **Des couches, comme dans Ortelia** : un cœur sans interface ni GPU (géodésie, caméra, tuiles et caches, sélection, préparation de la scène), un moteur de rendu wgpu, et une intégration egui mince. La présentation d'Ortelia ne dépend que du cœur ; seule `ortelia-ui-egui` utilise le rendu et le widget.
 - **Des versions liées** : pour dessiner dans la fenêtre egui, le moteur doit utiliser la même version de wgpu qu'eframe, et l'intégration egui suit l'API d'egui, qui change à chaque version mineure. Les montées de version se font en même temps dans les deux dépôts.
 - **Essai S5 en premier** : un globe minimal (imagerie, relief, objets et polygones drapés au sol, sélection ; images par seconde et mémoire), après examen de l'existant en Rust, par exemple `walkers` (carte en tuiles pour egui) ou `galileo` (moteur cartographique).
+- **Scénario de charge de S5** :
+  - des milliers de zones (polygones ou cercles) et des dizaines de milliers de mailles de 4 sommets, soit de l'ordre d'un million de sommets ;
+  - drapées sur le relief, avec survol et sélection, à 60 images par seconde.
+
+  Pour le Store, ce volume est modeste : l'extraction des sommets se compte en millisecondes, et elle n'a lieu qu'au chargement et après une modification. Le risque est dans le rendu :
+  - des tampons GPU persistants, et non le `Painter` d'egui, qui retriangule ses formes à chaque image ;
+  - un index spatial pour le survol ;
+  - des niveaux de détail pour la vue globale.
+
+### Lecture des données : correspondance, autres formats, fusion
+
+L'architecture de lecture (`architecture-couches.md`, § 9) est posée dès l'incrément 1. Ce qui viendra ensuite :
+
+- **Correspondance déclarative dans `app.json`**, entre la forme du fichier et celle du modèle :
+  - renommage d'attributs ;
+  - conversions de valeurs simples (tables de valeurs, unités, formats de date) ;
+  - conditions qui calculent des valeurs, avec le langage d'expressions de l'incrément 6.
+
+  Exemple : des positions GeoJSON `[lon, lat]` lues comme des objets `Point` du modèle.
+- **Lecteurs XML** (avec import de XSD) et **plugins de lecture**. Un plugin de lecture connaît le modèle et crée les objets directement par le constructeur.
+- **Fusion d'une source avec des objets déjà présents**, pour la source REST :
+  - rapprochement par identifiant métier ;
+  - créations, modifications et suppressions enregistrées dans la liste des changements ;
+  - à décider alors : objets absents de la réponse supprimés ou gardés ; objet en cours d'édition.
 
 ### Autres pistes
 
