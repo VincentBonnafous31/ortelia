@@ -363,9 +363,9 @@ mod tests {
 
     fn assert_all_values(measures: &[Measure]) {
         for measure in measures {
-            let memory =
-                measure.code.starts_with('M') && measure.code != "M3" && measure.code != "M3o";
-            let memory_unavailable = memory && !cfg!(target_os = "linux");
+            // The measures read in `/proc/self/status`: unavailable outside Linux.
+            let from_proc = matches!(measure.code.as_str(), "M1" | "M2" | "M2r" | "E1m");
+            let memory_unavailable = from_proc && !cfg!(target_os = "linux");
             assert_eq!(measure.value.is_some(), !memory_unavailable, "{measure:?}");
             if let Some(value) = measure.value {
                 assert!(
