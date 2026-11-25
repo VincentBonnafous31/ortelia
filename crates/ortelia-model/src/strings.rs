@@ -50,6 +50,16 @@ impl StrRef {
     fn len(self) -> usize {
         (self.0 & FIELD_MASK) as usize
     }
+
+    /// The same string once its arena has been absorbed by another, whose blocks came first:
+    /// its block number moves by `offset` ([`StringArena::absorb`]).
+    pub(crate) fn shifted(self, offset: usize) -> StrRef {
+        if self == StrRef::EMPTY {
+            // Designates no block.
+            return self;
+        }
+        StrRef::new(self.block() + offset, self.start(), self.len())
+    }
 }
 
 /// The strings of a store.
@@ -109,6 +119,26 @@ impl StringArena {
         }
     }
 
+    /// Moves the blocks of `other` after those of this arena, without copying their strings, and
+    /// returns the offset to apply to the block numbers of `other`'s references
+    /// ([`StrRef::shifted`]).
+    ///
+    /// The block being filled stays this arena's: the last block of `other` is never filled
+    /// further, so at most one partly empty block (less than 1 MiB) is lost.
+    ///
+    /// # Panics
+    /// If the arena would hold more than its maximum number of blocks (16 TiB).
+    pub(crate) fn absorb(&mut self, other: StringArena) -> usize {
+        let offset = self.blocks.len();
+        assert!(
+            offset + other.blocks.len() <= MAX_BLOCKS,
+            "string arena full"
+        );
+        // Moves each `String` (a pointer, a length, a capacity), not its bytes.
+        self.blocks.extend(other.blocks);
+        offset
+    }
+
     fn new_block(&mut self, block: String) -> usize {
         assert!(self.blocks.len() < MAX_BLOCKS, "string arena full");
         self.blocks.push(block);
@@ -156,6 +186,30 @@ mod tests {
         for (text, r) in texts.iter().zip(&refs) {
             assert_eq!(arena.get(*r), text);
         }
+    }
+
+    #[test]
+    fn absorbed_strings_stay_readable_and_are_not_copied() {
+        let mut arena = StringArena::new();
+        let mine = arena.push("avant");
+        let mut other = StringArena::new();
+        let short = other.push("court");
+        let long = "l".repeat(OWN_BLOCK + 10);
+        let long_ref = other.push(&long);
+        let empty = other.push("");
+        let address = other.blocks[0].as_ptr();
+
+        let offset = arena.absorb(other);
+        assert_eq!(offset, 1);
+        assert_eq!(arena.get(mine), "avant");
+        assert_eq!(arena.get(short.shifted(offset)), "court");
+        assert_eq!(arena.get(long_ref.shifted(offset)), long);
+        assert_eq!(arena.get(empty.shifted(offset)), "");
+        // The bytes did not move; the block being filled is still the first one.
+        assert_eq!(arena.blocks[1].as_ptr(), address);
+        let after = arena.push("après");
+        assert_eq!(after.block(), 0);
+        assert_eq!(arena.get(after), "après");
     }
 
     #[test]

@@ -1,6 +1,6 @@
 # Architecture en couches : une interface interchangeable
 
-*2026-11-23. Proposé, à valider. Objectif fixé par le porteur du projet : séparer fortement les couches modèle et service, pour pouvoir remplacer l'interface (egui ↔ GPUI), voire disposer de deux implémentations et choisir laquelle utiliser. Questions Q18 à Q20 tranchées le même jour : egui est la seule interface réalisée, sans essai comparatif (§ 8). Complété le 2026-11-25 : lecture des données (§ 9, D28 à D30).*
+*2026-11-23. Proposé, à valider. Objectif fixé par le porteur du projet : séparer fortement les couches modèle et service, pour pouvoir remplacer l'interface (egui ↔ GPUI), voire disposer de deux implémentations et choisir laquelle utiliser. Questions Q18 à Q20 tranchées le même jour : egui est la seule interface réalisée, sans essai comparatif (§ 8). Complété le 2026-11-25 : lecture des données (§ 9, D28 à D30), puis fragment, Document et sources (D30 révisée, D31, D32).*
 
 ---
 
@@ -165,7 +165,7 @@ Même sans seconde interface, la couche de présentation reste utile : elle se t
 
 ## 9. Lecture des données : format, correspondance, constructeur
 
-*2026-11-25. Décisions prises en préparant l'incrément 1 (changement OpenSpec `stockage-dynamique`).*
+*2026-11-25. Décisions prises en préparant l'incrément 1 (changements OpenSpec `stockage-dynamique`, puis `modele-et-donnees`).*
 
 ```
   fichier JSON ---> lecteur JSON ---+
@@ -173,21 +173,38 @@ Même sans seconde interface, la couche de présentation reste utile : elle se t
                                      +--> correspondance --+
                                           (identite pour   |
                                           l'instant)       v
-  plugin de lecture ---------------------------------> constructeur ---> Store neuf
-  (connait le modele)                                (ortelia-model)       |
+  plugin de lecture ---------------------------------> constructeur ---> fragment
+  (connait le modele)                                (ortelia-model)   (Store detache,
+                                                                        objets de tete
+                                                                        d'une branche)
+                                                                           |
+                                                       absorption, sans recopie des objets
                                                                            v
-                                              integration dans le contexte de l'application :
-                                              remplacement (une entree), puis fusion (REST)
+  app.json : racine, sources --> Document : Store + revision + journal
+  (ortelia-config)               greffe du fragment sur sa branche (/, /stations,
+                                 /annuaire/personnes...), en remplacant son contenu,
+                                 en une transaction
 ```
 
 - **Le lecteur de format** ne connaît que la syntaxe. Le lecteur JSON lit en flux, sans arbre intermédiaire.
 - **La correspondance** relie la forme du fichier à celle du modèle. La forme du fichier ne dicte pas celle du modèle : des positions GeoJSON `[lon, lat]` peuvent devenir des objets `Point`. Par défaut, c'est la correspondance identité : nom de clé = nom d'attribut ou de référence, `_type_` pour la classe concrète. Des règles déclarées dans `app.json` viendront plus tard (`feuille-de-route.md`, pistes).
-- **Le constructeur** est la seule API de création des objets. Le lecteur l'appelle dans l'ordre du fichier (début d'objet, valeurs, fin d'objet), comme un `ContentHandler` SAX. Il convertit les valeurs données en texte (XML, dates JSON) selon le type de l'attribut : il n'y a qu'une conversion, pour tous les formats. Il produit aussi les erreurs, avec le chemin de la donnée dans le modèle.
+- **Le constructeur** est la seule API de création des objets. Le lecteur l'appelle dans l'ordre du fichier (début d'objet, valeurs, fin d'objet), comme un `ContentHandler` SAX. Il convertit les valeurs données en texte (XML, dates JSON) selon le type de l'attribut : il n'y a qu'une conversion, pour tous les formats. Il produit aussi les erreurs, avec le chemin de la donnée depuis la racine de l'application. Il ne s'arrête pas à la première : il les rassemble (les 100 premières et leur total), ainsi que les diagnostics des attributs obligatoires sans valeur.
+- **Le fragment** est ce que remplit le constructeur : un Store détaché, avec les objets de tête d'une branche (un objet pour la racine ou une référence simple, une liste pour une référence multiple). Il peut changer de thread.
+- **Le Document** possède le Store de l'application. Il est seul à le modifier, par des transactions qui augmentent sa révision et s'ajoutent à son journal.
 
 **Décisions**
 
 - **D28.** La lecture des données passe par trois étages : lecteur de format, correspondance, constructeur. Le constructeur, dans `ortelia-model`, est la seule voie de création des objets pour tous les lecteurs.
 - **D29.** Un plugin de lecture connaît le modèle et appelle directement le constructeur. L'interface C du constructeur ne fait passer que des identifiants, des textes et des valeurs simples ; `ortelia-plugin-sdk` n'aura besoin que de `ortelia-model`.
-- **D30.** Lire, puis intégrer.
-  - Un lecteur remplit toujours un Store neuf, sans liste des changements. La lecture peut donc se faire en tâche de fond, sans toucher aux données affichées.
-  - L'intégration dans le contexte de l'application enregistre les changements : une seule entrée grossière pour un remplacement (incrément 1), les seules vraies différences pour une fusion, par rapprochement sur l'identifiant métier (avec la source REST).
+- **D30.** Lire un fragment, puis le greffer sur sa branche, en remplaçant son contenu.
+  - Un lecteur remplit toujours un fragment neuf, sans liste des changements. La lecture peut donc se faire en tâche de fond, sans toucher aux données affichées.
+  - La greffe absorbe le Store du fragment dans celui du Document, sans recopier les objets ni les textes, et ne fait mourir que les objets de la branche. Elle s'enregistre comme un seul changement, qui donne la branche et ses nouveaux objets.
+  - La fusion, par rapprochement sur l'identifiant métier (avec la source REST), donnera plus tard les vraies différences.
+- **D31.** Un Store brut, un Document seul à le modifier.
+  - Hors de `ortelia-model`, le Store ne se lit que par `Document::store()` ; ses méthodes de modification ne sont visibles que dans la crate.
+  - Toute modification passe par une transaction (`Document::edit`), qui enregistre ses changements à sa fin : anciennes et nouvelles valeurs, créations, suppressions, remplacements de branche.
+  - La présentation lit la révision du Document et les changements depuis la révision qu'elle a vue, sans observateurs ni rappels : c'est elle qui décide quand regarder.
+- **D32.** Une racine désignée par `app.json`, un fichier par branche.
+  - `model.root` désigne la classe de la racine ; chaque source a pour cible une branche, `/` ou `/r1/…/rn`, vérifiée contre le modèle avant toute lecture.
+  - À l'ouverture, la racine et le squelette (les objets intermédiaires des cibles) sont créés dans une première transaction, puis chaque source est lue et greffée sur sa branche, dans l'ordre de `app.json`, en une transaction par source.
+  - Deux sources n'alimentent jamais la même branche, ni une branche à l'intérieur de l'autre. Une source en échec n'empêche pas l'ouverture : sa branche reste vide, et son état donne ses erreurs.

@@ -29,7 +29,10 @@ use std::process::{Command, ExitCode, Stdio};
 use std::sync::Arc;
 use std::time::Instant;
 
-use ortelia_model::metamodel::{Model, ModelFile};
+use ortelia_model::builder::DataPath;
+use ortelia_model::document::{Document, Target};
+use ortelia_model::fragment::{Fragment, Shape};
+use ortelia_model::metamodel::{ClassId, Model, ModelFile};
 use ortelia_service::json::{read_json, read_json_slice};
 use serde::Deserialize;
 use serde::de::IgnoredAny;
@@ -214,7 +217,19 @@ fn parse_only<T: for<'de> Deserialize<'de>>(
     Ok(measures)
 }
 
-/// The store: loading, memory, and in stream mode the access and modification measures.
+/// A document of root `Reseau` whose root is replaced by `fragment`, read for the root: the way
+/// an application with a single source at `/` loads its data.
+fn integrate(model: &Arc<Model>, root: ClassId, fragment: Fragment) -> Result<Document, String> {
+    let mut document = Document::new(model.clone(), root).map_err(|e| e.to_string())?;
+    document
+        .edit()
+        .replace(Target::Root, fragment)
+        .map_err(|e| e.to_string())?;
+    Ok(document)
+}
+
+/// The store: loading (reading a fragment, then integrating it into a document), memory, and in
+/// stream mode the access and modification measures.
 fn store_case(
     mode: &str,
     path: &Path,
@@ -223,20 +238,26 @@ fn store_case(
 ) -> Result<Vec<Measure>, String> {
     let model = network_model()?;
     let root = model.class_id("Reseau").ok_or("no class Reseau")?;
+    let shape = Shape::root(root);
     let error = |e: &dyn std::fmt::Display| format!("{}: {e}", path.display());
     let mut measures = Vec::new();
     let start = Instant::now();
-    let mut store = match mode {
+    let mut document = match mode {
         "stream" => {
             let file = File::open(path).map_err(|e| error(&e))?;
-            read_json(file, model.clone(), root).map_err(|e| error(&e))?
+            let fragment = read_json(file, model.clone(), shape, DataPath::default())
+                .map_err(|e| error(&e))?
+                .fragment;
+            integrate(&model, root, fragment)?
         }
         "count" => {
             let file = File::open(path).map_err(|e| error(&e))?;
             counting_alloc::start();
-            let store = read_json(file, model.clone(), root);
+            let document = read_json(file, model.clone(), shape, DataPath::default())
+                .map_err(|e| error(&e))
+                .and_then(|loaded| integrate(&model, root, loaded.fragment));
             let (count, bytes) = counting_alloc::stop();
-            black_box(&store.map_err(|e| error(&e))?);
+            black_box(&document?);
             return Ok(vec![
                 Measure::new(
                     "M3",
@@ -260,7 +281,10 @@ fn store_case(
                 "ms",
                 Some(millis(start)),
             ));
-            read_json_slice(&bytes, model.clone(), root).map_err(|e| error(&e))?
+            let fragment = read_json_slice(&bytes, model.clone(), shape, DataPath::default())
+                .map_err(|e| error(&e))?
+                .fragment;
+            integrate(&model, root, fragment)?
         }
         _ => return Err(format!("unknown mode `{mode}`")),
     };
@@ -273,12 +297,17 @@ fn store_case(
     measures.extend(memory_measures(file_mib));
     if mode == "stream" {
         let net = Network::new(&model);
-        let inventory = Inventory::new(&store, &net);
-        measures.extend(access::measure_all(&mut store, &net, &inventory, settings));
-        measures.extend(edit::measure_all(&mut store, &net, &inventory, settings).measures);
+        let inventory = Inventory::new(document.store(), &net);
+        measures.extend(access::measure_all(
+            &mut document,
+            &net,
+            &inventory,
+            settings,
+        ));
+        measures.extend(edit::measure_all(&mut document, &net, &inventory, settings).measures);
     }
-    // Keeps the store alive until the measures are complete.
-    black_box(&store);
+    // Keeps the document alive until the measures are complete.
+    black_box(&document);
     Ok(measures)
 }
 
@@ -311,10 +340,12 @@ fn stats(path: &Path) -> Result<(), String> {
     let model = network_model()?;
     let root = model.class_id("Reseau").ok_or("no class Reseau")?;
     let file = File::open(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let store =
-        read_json(file, model.clone(), root).map_err(|e| format!("{}: {e}", path.display()))?;
+    let fragment = read_json(file, model.clone(), Shape::root(root), DataPath::default())
+        .map_err(|e| format!("{}: {e}", path.display()))?
+        .fragment;
+    let store = fragment.store();
     let mut counts = vec![0usize; model.classes().len()];
-    let mut stack = vec![store.root().ok_or("no root")?];
+    let mut stack = fragment.heads().to_vec();
     while let Some(obj) = stack.pop() {
         let class = store.class_of(obj);
         counts[class.index()] += 1;
@@ -335,7 +366,6 @@ fn stats(path: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use ortelia_model::store::Store;
 
     fn example() -> std::path::PathBuf {
         Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -419,20 +449,23 @@ mod tests {
         assert_all_values(&measures);
     }
 
-    fn loaded() -> (Store, Network, Inventory) {
+    fn loaded() -> (Document, Network, Inventory) {
         let model = network_model().expect("model");
         let root = model.class_id("Reseau").expect("Reseau");
         let file = File::open(example()).expect("example");
-        let store = read_json(file, model.clone(), root).unwrap_or_else(|e| panic!("{e}"));
+        let fragment = read_json(file, model.clone(), Shape::root(root), DataPath::default())
+            .unwrap_or_else(|e| panic!("{e}"))
+            .fragment;
+        let document = integrate(&model, root, fragment).expect("integrate");
         let net = Network::new(&model);
-        let inventory = Inventory::new(&store, &net);
-        (store, net, inventory)
+        let inventory = Inventory::new(document.store(), &net);
+        (document, net, inventory)
     }
 
     /// A1 to A7 cover the example file (task 5.4).
     #[test]
     fn access_measures() {
-        let (mut store, net, inventory) = loaded();
+        let (mut document, net, inventory) = loaded();
         assert_eq!((inventory.stations.len(), inventory.readings.len()), (2, 6));
         assert_eq!(
             (
@@ -442,7 +475,7 @@ mod tests {
             ),
             (17, 12, 2)
         );
-        let measures = access::measure_all(&mut store, &net, &inventory, &small());
+        let measures = access::measure_all(&mut document, &net, &inventory, &small());
         assert_eq!(codes(&measures), ["A1", "A2", "A3", "A4", "A5", "A6", "A7"]);
         assert!(
             measures.iter().all(|m| m.value.is_some_and(|v| v > 0.0)),
@@ -450,12 +483,20 @@ mod tests {
         );
     }
 
-    /// E1 to E4 cover the example file, and leave the store consistent (task 5.5).
+    /// E1 to E4 cover the example file, and leave the document consistent (task 5.5), with one
+    /// transaction per pass of each measure.
     #[test]
     fn edit_measures() {
-        let (mut store, net, inventory) = loaded();
+        let (mut document, net, inventory) = loaded();
         let settings = small();
-        let outcome = edit::measure_all(&mut store, &net, &inventory, &settings);
+        let revision = document.revision();
+        let outcome = edit::measure_all(&mut document, &net, &inventory, &settings);
+        // E1, E2 and E4: a transaction per pass, plus the setup and the end of E2; E3: one
+        // per station.
+        let passes = settings.passes as u64;
+        let stations = inventory.stations.len().min(settings.passes) as u64;
+        assert_eq!(document.revision(), revision + 3 * passes + 2 + stations);
+        let store = document.store();
         assert_eq!(codes(&outcome.measures), ["E1", "E1m", "E2", "E4", "E3"]);
         assert!(
             outcome

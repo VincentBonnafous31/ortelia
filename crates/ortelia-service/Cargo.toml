@@ -13,12 +13,15 @@ ortelia-config.workspace = true
 ortelia-expr.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+tracing.workspace = true
 
 [lints]
 workspace = true
 
 [dev-dependencies]
 fastrand.workspace = true
+tempfile.workspace = true
+tracing-subscriber.workspace = true
 
 # The S1 benchmark (see examples/s1/main.rs). `test = true`: `cargo test` also runs its tests.
 [[example]]

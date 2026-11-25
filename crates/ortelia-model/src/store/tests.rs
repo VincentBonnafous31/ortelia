@@ -1,23 +1,21 @@
-//! Tests of the object store (specification `object-store`).
+//! Tests of the object store (specification `object-store`), inside the crate: the methods
+//! that modify a store are `pub(crate)`, out of reach of an integration test.
 
-mod common;
-
+use super::Slot;
 use jiff::Timestamp;
 use jiff::civil::Date;
 use std::sync::Arc;
 
-use ortelia_model::metamodel::{Model, ModelFile};
-use ortelia_model::store::{ObjectId, Position, Store, StoreError};
-use ortelia_model::value::Value;
+use crate::metamodel::{Model, ModelFile};
+use crate::store::{ObjectId, Position, Store, StoreError};
+use crate::value::Value;
 
-use common::{Names, network_model};
+use crate::test_support::{Names, network_model};
 
 /// A store with a root `Reseau`.
 fn new_store() -> (Store, Names, ObjectId) {
     let model = network_model();
-    let names = Names {
-        model: model.clone(),
-    };
+    let names = Names::new(&model);
     let mut store = Store::new(model);
     let root = store.create_root(names.class("Reseau")).expect("root");
     (store, names, root)
@@ -496,6 +494,176 @@ fn delete_a_subtree() {
     );
 }
 
+/// Scenario "Descendants d'une station".
+#[test]
+fn descendants_of_a_station() {
+    let (mut store, n, root) = new_store();
+    let s = station(&mut store, &n, root, "A");
+    let other = station(&mut store, &n, root, "B");
+    let thermometer = add(&mut store, &n, s, ("Station", "equipements"), "Thermometre");
+    let measures: Vec<ObjectId> = (0..3)
+        .map(|_| {
+            add(
+                &mut store,
+                &n,
+                thermometer,
+                ("Capteur", "mesures"),
+                "Releve",
+            )
+        })
+        .collect();
+    let camera = add(&mut store, &n, s, ("Station", "equipements"), "Camera");
+    add(&mut store, &n, other, ("Station", "equipements"), "Camera");
+
+    let mut expected = vec![s, thermometer];
+    expected.extend(&measures);
+    expected.push(camera);
+    assert_eq!(store.descendants(s), expected);
+    assert_eq!(store.descendants(camera), [camera]);
+}
+
+/// A model where a node holds nodes, for deep trees.
+fn tree_model() -> Names {
+    let text = r#"{ "formatVersion": "0.1", "packages": [{ "name": "p", "classes": [
+        { "name": "Node", "references": [ { "name": "next", "type": "Node" },
+                                          { "name": "items", "type": "Node", "upperBound": -1 } ] } ] }] }"#;
+    let model = Model::compile(&[ModelFile::parse(text).expect("parse")]).expect("compile");
+    Names {
+        model: Arc::new(model),
+    }
+}
+
+/// Scenario "Arbre très profond".
+#[test]
+fn descendants_of_a_very_deep_tree() {
+    let n = tree_model();
+    let mut store = Store::new(n.model.clone());
+    let root = store.create_root(n.class("Node")).expect("root");
+    let mut last = root;
+    for _ in 0..100_000 {
+        last = add(&mut store, &n, last, ("Node", "next"), "Node");
+    }
+    let descendants = store.descendants(root);
+    assert_eq!(descendants.len(), 100_001);
+    assert_eq!((descendants[0], descendants[100_000]), (root, last));
+    // Deleting it does not overflow the stack either.
+    let first = store.children(root, n.reference("Node", "next"))[0];
+    store.delete(first);
+    assert!(!store.is_alive(last));
+}
+
+/// Scenario "Plusieurs objets d'une même liste" of `object-store`.
+#[test]
+fn delete_many_in_one_list() {
+    let (mut store, n, root) = new_store();
+    let ids: Vec<ObjectId> = ["A", "B", "C", "D", "E"]
+        .iter()
+        .map(|name| station(&mut store, &n, root, name))
+        .collect();
+    let thermometer = add(
+        &mut store,
+        &n,
+        ids[2],
+        ("Station", "equipements"),
+        "Thermometre",
+    );
+    let stations = n.reference("Reseau", "stations");
+    let deleted = store.delete_many(&[ids[0], ids[2], ids[4]]);
+    assert_eq!(
+        deleted,
+        [
+            (ids[0], root, stations, 0),
+            (ids[2], root, stations, 2),
+            (ids[4], root, stations, 4)
+        ]
+    );
+    assert_eq!(store.children(root, stations), [ids[1], ids[3]]);
+    for id in [ids[0], ids[2], ids[4], thermometer] {
+        assert!(!store.is_alive(id), "{id:?}");
+    }
+}
+
+/// Scenario "Grand lot".
+#[test]
+fn delete_many_large_batch() {
+    let n = Names {
+        model: crate::test_support::directory_model(),
+    };
+    let mut store = Store::new(n.model.clone());
+    let root = store.create_root(n.class("Racine")).expect("root");
+    let directory = add(&mut store, &n, root, ("Racine", "annuaire"), "Annuaire");
+    let persons: Vec<ObjectId> = (0..100_000)
+        .map(|_| {
+            add(
+                &mut store,
+                &n,
+                directory,
+                ("Annuaire", "personnes"),
+                "Personne",
+            )
+        })
+        .collect();
+    let (doomed, kept): (Vec<ObjectId>, Vec<ObjectId>) =
+        persons.iter().partition(|id| id.index() % 2 == 0);
+    let start = std::time::Instant::now();
+    let deleted = store.delete_many(&doomed);
+    let elapsed = start.elapsed();
+    assert!(elapsed.as_secs_f64() < 1.0, "{elapsed:?}");
+    assert_eq!(deleted.len(), 50_000);
+    assert_eq!(
+        store.children(directory, n.reference("Annuaire", "personnes")),
+        kept
+    );
+}
+
+/// Scenario "Objets de listes différentes", and objects given with their ancestor or twice.
+#[test]
+fn delete_many_across_lists() {
+    let (mut store, n, root) = new_store();
+    let stations: Vec<ObjectId> = ["A", "B", "C"]
+        .iter()
+        .map(|name| station(&mut store, &n, root, name))
+        .collect();
+    let zones: Vec<ObjectId> = (0..3)
+        .map(|_| add(&mut store, &n, root, ("Reseau", "zones"), "ZoneAlerte"))
+        .collect();
+    let polygon = add(
+        &mut store,
+        &n,
+        zones[0],
+        ("ZoneAlerte", "emprise"),
+        "Polygone",
+    );
+    let camera = add(
+        &mut store,
+        &n,
+        stations[1],
+        ("Station", "equipements"),
+        "Camera",
+    );
+
+    let deleted = store.delete_many(&[camera, stations[1], polygon, zones[2], stations[1]]);
+    let emprise = n.reference("ZoneAlerte", "emprise");
+    assert_eq!(
+        deleted,
+        [
+            (stations[1], root, n.reference("Reseau", "stations"), 1),
+            (polygon, zones[0], emprise, 0),
+            (zones[2], root, n.reference("Reseau", "zones"), 2)
+        ]
+    );
+    assert_eq!(
+        store.children(root, n.reference("Reseau", "stations")),
+        [stations[0], stations[2]]
+    );
+    assert_eq!(
+        store.children(root, n.reference("Reseau", "zones")),
+        [zones[0], zones[1]]
+    );
+    assert!(store.children(zones[0], emprise).is_empty());
+    assert!(!store.is_alive(camera));
+}
+
 #[test]
 fn second_root_is_refused() {
     let (mut store, n, _root) = new_store();
@@ -527,4 +695,9 @@ fn assert_send<T: Send>() {}
 #[test]
 fn store_is_send() {
     assert_send::<Store>();
+}
+
+#[test]
+fn slot_takes_16_bytes() {
+    assert_eq!(size_of::<Slot>(), 16);
 }

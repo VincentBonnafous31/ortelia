@@ -1,17 +1,20 @@
-//! Measures of modification (E1 to E4) of the store.
+//! Measures of modification (E1 to E4), through the transactions of the document: one
+//! transaction per pass of a measure, whose recording (the journal, old values copied) is part
+//! of the measure.
 //!
 //! They run in the order E1, E2, E4, E3: E3 deletes stations, which E1 draws from.
 
 use std::time::Instant;
 
-use ortelia_model::store::{ObjectId, Position, Store};
+use ortelia_model::document::Document;
+use ortelia_model::store::{ObjectId, Position};
 use ortelia_model::value::Value;
 
 use crate::access::{Inventory, Network, SEED, Settings, median_of, nanos, per_unit};
 use crate::memory;
 use crate::report::Measure;
 
-/// What E1 to E4 did, for the tests to check the store afterwards.
+/// What E1 to E4 did, for the tests to check the document afterwards.
 pub struct Outcome {
     pub measures: Vec<Measure>,
     // The fields below are only read by the tests.
@@ -27,7 +30,7 @@ pub struct Outcome {
 
 /// Runs E1, E2, E4 and E3, and returns their measures.
 pub fn measure_all(
-    store: &mut Store,
+    document: &mut Document,
     net: &Network,
     inventory: &Inventory,
     settings: &Settings,
@@ -50,31 +53,36 @@ pub fn measure_all(
         })
         .collect();
     let before = memory::resident_mib();
-    let e1 = median_of(passes, |_| {
+    let e1 = median_of(passes, |pass| {
         let start = Instant::now();
         let mut done = 0;
+        let mut edit = document.edit();
         for &(kind, index) in &operations {
+            // The values depend on the pass, so that a pass does not give the values that the
+            // previous one left, which the document would not record.
             let result = match kind {
-                0 => store.set(
+                0 => edit.set(
                     inventory.readings[index],
                     net.value,
-                    Value::Float(index as f64 * 0.5),
+                    Value::Float(index as f64 * 0.5 + pass as f64),
                 ),
-                1 => store.set(
+                1 => edit.set(
                     inventory.stations[index],
                     net.altitude,
-                    Value::Int(index as i64),
+                    Value::Int((index + pass) as i64),
                 ),
-                2 => store.set(
+                2 => edit.set(
                     inventory.stations[index],
                     net.name,
-                    Value::Str(&texts[index % texts.len()]),
+                    Value::Str(&texts[(index + pass) % texts.len()]),
                 ),
                 _ => continue,
             };
             result.expect("set");
             done += 1;
         }
+        // Records the transaction: part of the measure.
+        drop(edit);
         nanos(start) / f64::from(done.max(1))
     });
     let growth = match (before, memory::resident_mib()) {
@@ -96,35 +104,37 @@ pub fn measure_all(
     ));
 
     // E2: insert then delete objects in the middle of a long list built for the measure.
-    let root = store.root().expect("root");
-    let zone = store
+    let root = document.root();
+    let mut edit = document.edit();
+    let zone = edit
         .create_child(root, net.zones, Position::End, net.zone)
         .expect("zone");
-    let polygon = store
+    let polygon = edit
         .create_child(zone, net.footprint, Position::End, net.polygon)
         .expect("polygon");
     for _ in 0..settings.e2_list {
-        store
-            .create_child(polygon, net.vertices, Position::End, net.point)
+        edit.create_child(polygon, net.vertices, Position::End, net.point)
             .expect("point");
     }
+    drop(edit);
     let e2 = median_of(passes, |_| {
         let start = Instant::now();
-        let middle = store.children(polygon, net.vertices).len() / 2;
+        let mut edit = document.edit();
+        let middle = edit.store().children(polygon, net.vertices).len() / 2;
         let inserted: Vec<ObjectId> = (0..settings.e2_objects)
             .map(|_| {
-                store
-                    .create_child(polygon, net.vertices, Position::At(middle), net.point)
+                edit.create_child(polygon, net.vertices, Position::At(middle), net.point)
                     .expect("insert")
             })
             .collect();
         for id in inserted {
-            store.delete(id);
+            edit.delete(id).expect("delete");
         }
+        drop(edit);
         nanos(start) / 1e6
     });
     assert_eq!(
-        store.children(polygon, net.vertices).len(),
+        document.store().children(polygon, net.vertices).len(),
         settings.e2_list
     );
     let label = format!(
@@ -132,7 +142,7 @@ pub fn measure_all(
         settings.e2_objects, settings.e2_list
     );
     measures.push(Measure::new("E2", &label, "ms", Some(e2)));
-    store.delete(zone);
+    document.edit().delete(zone).expect("delete zone");
 
     // E4: create cells of 4 corners under a zone, as a cutting into cells would.
     let e4_zone = inventory.zones.first().copied();
@@ -140,27 +150,26 @@ pub fn measure_all(
     if let Some(zone) = e4_zone {
         let e4 = median_of(passes, |_| {
             let start = Instant::now();
+            let mut edit = document.edit();
             for number in 0..settings.e4_cells {
-                let cell = store
+                let cell = edit
                     .create_child(zone, net.cells, Position::End, net.cell)
                     .expect("cell");
-                store
-                    .set(cell, net.number, Value::Int(number as i64))
+                edit.set(cell, net.number, Value::Int(number as i64))
                     .expect("numero");
-                store.set(cell, net.status, Value::Enum(0)).expect("statut");
+                edit.set(cell, net.status, Value::Enum(0)).expect("statut");
                 for (lat, lon) in [(0.0, 0.0), (0.0, 0.05), (0.05, 0.05), (0.05, 0.0)] {
-                    let corner = store
+                    let corner = edit
                         .create_child(cell, net.corners, Position::End, net.point)
                         .expect("corner");
-                    store
-                        .set(corner, net.lat, Value::Float(48.0 + lat))
+                    edit.set(corner, net.lat, Value::Float(48.0 + lat))
                         .expect("lat");
-                    store
-                        .set(corner, net.lon, Value::Float(-4.0 + lon))
+                    edit.set(corner, net.lon, Value::Float(-4.0 + lon))
                         .expect("lon");
                 }
                 e4_cells.push(cell);
             }
+            drop(edit);
             nanos(start) / 1e6
         });
         let label = format!(
@@ -186,7 +195,7 @@ pub fn measure_all(
         e3 = median_of(count, |pass| {
             let station = inventory.stations[pass];
             let start = Instant::now();
-            store.delete(station);
+            document.edit().delete(station).expect("delete station");
             let elapsed = nanos(start) / 1e6;
             e3_deleted.push(station);
             elapsed

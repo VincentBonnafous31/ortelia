@@ -890,6 +890,8 @@ mod tests {
     fn generated_file_loads_with_the_test_model() {
         use std::sync::Arc;
 
+        use ortelia_model::builder::DataPath;
+        use ortelia_model::fragment::Shape;
         use ortelia_model::metamodel::{Model, ModelFile};
 
         let dir = tempfile::tempdir().expect("temp dir");
@@ -910,12 +912,19 @@ mod tests {
             Arc::new(Model::compile(&[ModelFile::parse(&text).expect("parse")]).expect("compile"));
         let root = model.class_id("Reseau").expect("Reseau");
         let file = File::open(&out).expect("open");
-        let store = ortelia_service::json::read_json(file, model, root)
-            .unwrap_or_else(|error| panic!("{error}"));
+        // A fragment for the root of a network.
+        let loaded =
+            ortelia_service::json::read_json(file, model, Shape::root(root), DataPath::default())
+                .unwrap_or_else(|failure| panic!("{failure}"));
+        // A generated file conforms to the model: every required attribute has a value.
+        assert_eq!(loaded.diagnostic_count, 0, "{:#?}", loaded.diagnostics);
+        let fragment = loaded.fragment;
+        let store = fragment.store();
         let reseau = store.model().class(root);
         let stations = reseau.reference("stations").expect("stations");
         let zones = reseau.reference("zones").expect("zones");
-        let root = store.root().expect("root");
+        assert_eq!(fragment.heads().len(), 1);
+        let root = fragment.heads()[0];
         assert!(!store.children(root, stations).is_empty());
         assert!(!store.children(root, zones).is_empty());
     }

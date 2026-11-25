@@ -1,4 +1,5 @@
-//! Measures of attribute access and navigation (A1 to A7) of the store.
+//! Measures of attribute access and navigation (A1 to A7) of the store, read through the
+//! document; A7 modifies it through transactions.
 //!
 //! Each measure runs several passes and keeps the median; `black_box` keeps the compiler from
 //! removing computations whose result is unused; random draws use a fixed seed.
@@ -7,6 +8,7 @@ use std::fmt::Write;
 use std::hint::black_box;
 use std::time::Instant;
 
+use ortelia_model::document::Document;
 use ortelia_model::metamodel::{AttrId, AttrType, ClassId, Model, RefId};
 use ortelia_model::store::{ObjectId, Store};
 use ortelia_model::value::Value;
@@ -197,11 +199,13 @@ pub fn draws(rng: &mut fastrand::Rng, len: usize, count: usize) -> Vec<usize> {
 
 /// Runs A1 to A7 and returns their measures.
 pub fn measure_all(
-    store: &mut Store,
+    document: &mut Document,
     net: &Network,
     inventory: &Inventory,
     settings: &Settings,
 ) -> Vec<Measure> {
+    // A1 to A6 only read: the borrow of the store ends before A7 modifies the document.
+    let store = document.store();
     let mut rng = fastrand::Rng::with_seed(SEED);
     let passes = settings.passes;
     let mut measures = Vec::new();
@@ -348,16 +352,19 @@ pub fn measure_all(
         per_unit(a6, starts.len()),
     ));
 
-    // A7: modify a corner, walk up to its zone, extract the zone again.
+    // A7: modify a corner (one transaction each), walk up to its zone, extract the zone again.
     let picks = draws(&mut rng, inventory.corners.len(), settings.a7_edits);
     let a7 = median_of(passes, |_| {
         let start = Instant::now();
         for &i in &picks {
             let corner = inventory.corners[i];
-            let lat = float(store.get(corner, net.lat));
-            store
-                .set(corner, net.lat, Value::Float(lat + 1e-6))
+            let mut edit = document.edit();
+            let lat = float(edit.store().get(corner, net.lat));
+            edit.set(corner, net.lat, Value::Float(lat + 1e-6))
                 .expect("set lat");
+            // Records the transaction: part of the measure.
+            drop(edit);
+            let store = document.store();
             let cell = store.container(corner).expect("cell").0;
             let zone = store.container(cell).expect("zone").0;
             buffer.clear();

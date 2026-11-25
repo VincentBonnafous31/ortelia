@@ -1,4 +1,5 @@
 {
+  "$schema": "../../schemas/model.schema.json",
   "formatVersion": "0.1",
   "packages": [
     {

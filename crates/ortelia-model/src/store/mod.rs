@@ -18,6 +18,9 @@
 //! This layout was chosen by the S1 trial (`docs/essais/s1-stockage.md`), against a heap of
 //! contiguous records: it is faster to navigate, at the cost of more memory.
 
+mod absorb;
+
+use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::sync::Arc;
 
@@ -72,6 +75,8 @@ pub enum StoreError {
     RootAlreadyExists,
     /// The position is past the end of the list.
     PositionOutOfRange { position: usize, len: usize },
+    /// The root of a document is replaced, never deleted.
+    RootNotDeletable,
 }
 
 impl fmt::Display for StoreError {
@@ -98,6 +103,9 @@ impl fmt::Display for StoreError {
             StoreError::RootAlreadyExists => write!(f, "the store already has a root object"),
             StoreError::PositionOutOfRange { position, len } => {
                 write!(f, "position {position} is past the end of a list of {len}")
+            }
+            StoreError::RootNotDeletable => {
+                write!(f, "the root cannot be deleted, only replaced")
             }
         }
     }
@@ -182,7 +190,7 @@ impl Store {
     }
 
     /// Creates the root object.
-    pub fn create_root(&mut self, class: ClassId) -> Result<ObjectId, StoreError> {
+    pub(crate) fn create_root(&mut self, class: ClassId) -> Result<ObjectId, StoreError> {
         if self.root.is_some() {
             return Err(StoreError::RootAlreadyExists);
         }
@@ -196,8 +204,13 @@ impl Store {
         self.root
     }
 
+    /// How many identifiers were given so far, deleted objects included.
+    pub(crate) fn ids_given(&self) -> usize {
+        self.objects.len()
+    }
+
     /// Creates an object of class `class` in the containment reference `reference` of `parent`.
-    pub fn create_child(
+    pub(crate) fn create_child(
         &mut self,
         parent: ObjectId,
         reference: RefId,
@@ -228,14 +241,18 @@ impl Store {
         match slot {
             Slot::One(_) => self.entry_mut(parent).slots[slot_index] = Slot::One(Some(child)),
             Slot::Many(Some(list)) => self.lists[list as usize].insert(insert_at, child),
-            Slot::Many(None) => {
-                let list = u32::try_from(self.lists.len()).expect("too many lists");
-                self.lists.push(vec![child]);
-                self.entry_mut(parent).slots[slot_index] = Slot::Many(Some(list));
-            }
+            Slot::Many(None) => self.new_list(parent, slot_index, vec![child]),
             _ => unreachable!("reference slot holds an attribute value"),
         }
         Ok(child)
+    }
+
+    /// Gives a list, holding `children`, to the empty list slot `slot_index` of `parent`: lists
+    /// are allocated on the first child only.
+    fn new_list(&mut self, parent: ObjectId, slot_index: usize, children: Vec<ObjectId>) {
+        let list = u32::try_from(self.lists.len()).expect("too many lists");
+        self.lists.push(children);
+        self.entry_mut(parent).slots[slot_index] = Slot::Many(Some(list));
     }
 
     /// `true` if `obj` designates an object that exists (not deleted).
@@ -280,7 +297,12 @@ impl Store {
     }
 
     /// Gives a value to an attribute, or removes it with [`Value::Unset`].
-    pub fn set(&mut self, obj: ObjectId, attr: AttrId, value: Value<'_>) -> Result<(), StoreError> {
+    pub(crate) fn set(
+        &mut self,
+        obj: ObjectId,
+        attr: AttrId,
+        value: Value<'_>,
+    ) -> Result<(), StoreError> {
         let class = self.entry(obj).class;
         check_owner(&self.model, class, attr.owner());
         check_value(&self.model, attr, &value)?;
@@ -299,27 +321,140 @@ impl Store {
     }
 
     /// Deletes an object and all its descendants, and removes it from its container.
-    pub fn delete(&mut self, obj: ObjectId) {
+    ///
+    /// Returns the container, the reference and the position the object had (0 in a single
+    /// reference).
+    ///
+    /// # Panics
+    /// If the object does not exist, or is the root: the [`Document`](crate::Document) refuses
+    /// the root before calling.
+    pub(crate) fn delete(&mut self, obj: ObjectId) -> (ObjectId, RefId, usize) {
         // Remove the object from its container.
-        match self.entry(obj).container {
-            None => self.root = None,
-            Some((parent, reference)) => {
-                let slot_index = self.ref_slot(self.entry(parent).class, reference);
-                match self.entry(parent).slots[slot_index] {
-                    Slot::One(_) => self.entry_mut(parent).slots[slot_index] = Slot::One(None),
+        let (parent, reference) = self.entry(obj).container.expect("cannot delete the root");
+        let slot_index = self.ref_slot(self.entry(parent).class, reference);
+        let index = match self.entry(parent).slots[slot_index] {
+            Slot::One(_) => {
+                self.entry_mut(parent).slots[slot_index] = Slot::One(None);
+                0
+            }
+            Slot::Many(Some(list)) => {
+                let list = &mut self.lists[list as usize];
+                let index = list.iter().position(|&c| c == obj).expect("child in list");
+                // Shifts the following children, which keep their order.
+                list.remove(index);
+                index
+            }
+            _ => unreachable!("object missing from its container"),
+        };
+
+        self.free_subtree(obj);
+        (parent, reference, index)
+    }
+
+    /// Deletes several objects and all their descendants, and removes them from their
+    /// containers. Each list is filtered once, whatever the number of its children deleted; the
+    /// remaining children keep their order. An object whose ancestor is also in `objs` is
+    /// deleted with the ancestor, and an object given twice is deleted once.
+    ///
+    /// Returns, for each object removed from its container, in the order of `objs`: the object,
+    /// its container, the reference, and its position before the deletion (0 in a single
+    /// reference).
+    ///
+    /// # Panics
+    /// If an object does not exist, or is the root.
+    pub(crate) fn delete_many(
+        &mut self,
+        objs: &[ObjectId],
+    ) -> Vec<(ObjectId, ObjectId, RefId, usize)> {
+        let batch: HashSet<ObjectId> = objs.iter().copied().collect();
+        // The objects to remove from their containers: those without an ancestor in the batch,
+        // each once, in the order of `objs`.
+        let mut seen = HashSet::new();
+        let mut heads = Vec::new();
+        for &obj in objs {
+            let (parent, reference) = self.entry(obj).container.expect("cannot delete the root");
+            if !seen.insert(obj) || self.has_ancestor_in(parent, &batch) {
+                continue;
+            }
+            heads.push((obj, parent, reference));
+        }
+
+        // Group the heads by list: one pass per list, whatever the number of its heads.
+        let mut by_list: HashMap<u32, HashSet<ObjectId>> = HashMap::new();
+        let mut positions: HashMap<ObjectId, usize> = HashMap::new();
+        for &(obj, parent, reference) in &heads {
+            let slot_index = self.ref_slot(self.entry(parent).class, reference);
+            match self.entry(parent).slots[slot_index] {
+                Slot::One(_) => {
+                    self.entry_mut(parent).slots[slot_index] = Slot::One(None);
+                    positions.insert(obj, 0);
+                }
+                Slot::Many(Some(list)) => {
+                    by_list.entry(list).or_default().insert(obj);
+                }
+                _ => unreachable!("object missing from its container"),
+            }
+        }
+        for (list, doomed) in by_list {
+            // `retain` visits the children once, in order: their positions are counted on the
+            // way, before anything moves.
+            let mut index = 0;
+            self.lists[list as usize].retain(|child| {
+                let keep = !doomed.contains(child);
+                if !keep {
+                    positions.insert(*child, index);
+                }
+                index += 1;
+                keep
+            });
+        }
+
+        let mut deleted = Vec::with_capacity(heads.len());
+        for (obj, parent, reference) in heads {
+            self.free_subtree(obj);
+            deleted.push((obj, parent, reference, positions[&obj]));
+        }
+        deleted
+    }
+
+    /// All the descendants of `obj`, `obj` included: each once, a parent before its children,
+    /// and the children of a reference in their order (a depth-first, pre-order walk).
+    pub fn descendants(&self, obj: ObjectId) -> Vec<ObjectId> {
+        let mut result = Vec::new();
+        // An explicit stack rather than a recursion that a deep tree could overflow.
+        let mut stack = vec![obj];
+        while let Some(current) = stack.pop() {
+            result.push(current);
+            // Pushed in reverse, so that they are popped in order.
+            for slot in self.entry(current).slots.iter().rev() {
+                match *slot {
+                    Slot::One(Some(child)) => stack.push(child),
                     Slot::Many(Some(list)) => {
-                        let list = &mut self.lists[list as usize];
-                        let index = list.iter().position(|&c| c == obj).expect("child in list");
-                        // Shifts the following children, which keep their order.
-                        list.remove(index);
+                        stack.extend(self.lists[list as usize].iter().rev());
                     }
-                    _ => unreachable!("object missing from its container"),
+                    _ => {}
                 }
             }
         }
+        result
+    }
 
-        // Mark the object and its descendants dead, with an explicit stack rather than a
-        // recursion that a deep tree could overflow.
+    /// `true` if `obj` or one of its ancestors is in `set`.
+    fn has_ancestor_in(&self, obj: ObjectId, set: &HashSet<ObjectId>) -> bool {
+        let mut current = Some(obj);
+        while let Some(obj) = current {
+            if set.contains(&obj) {
+                return true;
+            }
+            current = self.entry(obj).container.map(|(parent, _)| parent);
+        }
+        false
+    }
+
+    /// Marks `obj` and its descendants dead, and frees their blocks. `obj` must already be
+    /// removed from its container.
+    fn free_subtree(&mut self, obj: ObjectId) {
+        // An explicit stack rather than a recursion that a deep tree could overflow.
         let mut stack = vec![obj];
         while let Some(current) = stack.pop() {
             let entry = self.objects[current.index()]
@@ -441,11 +576,4 @@ fn check_position(position: Position, len: usize) -> Result<usize, StoreError> {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn slot_takes_16_bytes() {
-        assert_eq!(size_of::<Slot>(), 16);
-    }
-}
+mod tests;

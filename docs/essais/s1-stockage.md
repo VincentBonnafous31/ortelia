@@ -109,6 +109,8 @@ La lecture du fichier en mémoire (C0) prend environ 205 ms. Le plancher montre 
 
 La croissance de E1 vient de l'arène des chaînes, qui ne récupère pas la place des textes remplacés. Elle est identique pour les deux Stores.
 
+Depuis le changement « modèle et données », l'exemple `s1` modifie les données par les transactions du document (une par passe de mesure, et une par modification pour A7) : les mesures E et A7 comptent désormais le journal des changements, anciennes valeurs comprises. Les chiffres de ce document restent ceux de l'essai, mesurés directement sur le Store.
+
 ### Point de repère V0, sur 100 Mo
 
 | Mesure | plancher | V0 | V1 | V2 |

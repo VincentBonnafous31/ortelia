@@ -81,6 +81,7 @@ fi
 
 step "tests" cargo test --workspace --locked
 step "layer rule" cargo xtask check-layers
+step "JSON Schemas" cargo xtask gen-schemas --check
 
 if ((smoke)); then
     if [[ -n "${DISPLAY:-}${WAYLAND_DISPLAY:-}" ]]; then

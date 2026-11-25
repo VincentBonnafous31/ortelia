@@ -4,10 +4,15 @@
 //! Depends on no other Ortelia crate.
 
 pub mod builder;
+pub mod document;
+pub mod fragment;
 pub mod metamodel;
 pub mod store;
 pub mod strings;
 pub mod value;
+
+#[cfg(test)]
+mod test_support;
 
 #[cfg(test)]
 mod tests {
