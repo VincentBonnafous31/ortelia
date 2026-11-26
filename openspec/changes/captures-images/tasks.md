@@ -24,7 +24,7 @@ Toutes les commandes `cargo` se lancent dans WSL2, avec `CARGO_TARGET_DIR=~/targ
 
 ## 4. Application du résultat
 
-- [ ] 4.1 Modifier `.github/workflows/ci.yml` (design.md, § 8) : paquets du rendu logiciel installés avant l'étape « Tests » du job `checks` (Linux), étape qui publie l'artefact `snapshots-linux` après un échec, `mesa-vulkan-drivers` installé dans le job `coverage`. Fixer l'image du runner si l'essai l'a demandé, et régler `kittest.toml` d'après les mesures. Vérifier, après une poussée acceptée par le porteur du projet :
+- [x] 4.1 Modifier `.github/workflows/ci.yml` (design.md, § 8) : paquets du rendu logiciel installés avant l'étape « Tests » du job `checks` (Linux), étape qui publie l'artefact `snapshots-linux` après un échec, `mesa-vulkan-drivers` installé dans le job `coverage`. Fixer l'image du runner si l'essai l'a demandé, et régler `kittest.toml` d'après les mesures. Vérifier, après une poussée acceptée par le porteur du projet :
   - le workflow `CI` réussit sous Linux et sous Windows, sans artefact `snapshots-linux` ;
   - le journal des tests sous Windows liste les captures comme ignorées ;
   - un commit temporaire qui change le rendu de la fenêtre principale sans mettre à jour sa référence fait échouer `checks (ubuntu-26.04)` (image fixée par la tâche 4.1, voir le compte rendu de l'essai), et l'artefact `snapshots-linux` contient `main_window.new.png` et `main_window.diff.png` ; ce commit est ensuite annulé.
