@@ -43,7 +43,7 @@ crates/
   ortelia-presentation/ couche 3 : view-models, logique d'affichage
   ortelia-ui-egui/      couche 4 : dessin egui
   ortelia/              couche 5 : exécutable (ligne de commande, journalisation)
-xtask/                  outil du dépôt : vérification des couches, générateur de données d'essai, JSON Schema
+xtask/                  outil du dépôt : vérification des couches, générateur de données d'essai, JSON Schema, tableau de couverture
 schemas/                JSON Schema générés (versionnés)
 ```
 
@@ -170,9 +170,17 @@ Sous Windows, les deux scripts tournent dans WSL2 : `wsl -- bash -l tools/check.
 - Branche `main`, dépôt public `https://github.com/VincentBonnafous31/ortelia` (remote `origin`).
 - CI GitHub Actions (`.github/workflows/ci.yml`), à chaque poussée sur `main`, à chaque pull request vers `main` et à la demande :
   - job `checks`, sous Linux et Windows, tout en `--locked` : `cargo fmt --all --check` (Linux), `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo test --workspace --locked`, `cargo xtask check-layers`, `cargo xtask gen-schemas --check` (Linux), puis le test de fumée (Linux sous Xvfb, bloquant ; Windows non bloquant) ;
+  - job `coverage`, sous Linux, non bloquant pour les autres jobs : couverture du code par les tests, mesurée par cargo-llvm-cov. Le tableau par crate (lignes, fonctions, régions des fichiers de `src/`, modules de tests compris) s'affiche dans le résumé de l'exécution ; le rapport HTML, par fichier et par ligne, est l'artefact `coverage-html` (30 jours). Pas de seuil pour l'instant.
   - job `binaries`, hors pull requests : compilation release, `ortelia --version`, puis artefacts `ortelia-linux-x86_64` et `ortelia-windows-x86_64` (30 jours), téléchargeables depuis la page de l'exécution (`gh run download <id>`). C'est la seule source de la version Windows.
   - Seul `main` enregistre le cache Cargo (`Swatinem/rust-cache`).
 - Avant de pousser, lancer la même séquence en local : `tools/check.sh` (skill `/verifier`). Il vérifie aussi les lints propres à Windows (code réservé à Linux par `#[cfg]`, donc mort sous Windows) par Clippy pour la cible `x86_64-pc-windows-msvc`, sans édition de liens, donc sans les outils MSVC. La cible s'installe une fois : `rustup target add x86_64-pc-windows-msvc`.
+- Couverture en local (dans WSL2), après une installation unique (`rustup component add llvm-tools` et `cargo install cargo-llvm-cov --locked`) :
+  ```bash
+  cargo llvm-cov --workspace --locked --no-report
+  cargo llvm-cov report --json --summary-only --output-path ~/target/ortelia/coverage.json
+  cargo xtask coverage ~/target/ortelia/coverage.json   # tableau Markdown par crate
+  cargo llvm-cov report --html                          # détail dans $CARGO_TARGET_DIR/llvm-cov/html
+  ```
 - `gh` (GitHub CLI) est installé et connecté.
 - Ne committer ou pousser que sur demande.
 

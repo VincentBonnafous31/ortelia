@@ -85,6 +85,46 @@ jobs:
         continue-on-error: true
         run: cargo test -p ortelia --locked --test smoke -- --ignored
 
+  # Test coverage of each crate, measured by cargo-llvm-cov (LLVM source-based coverage), shown
+  # in the summary of the run and kept as an HTML report (detail by file and line). Linux only,
+  # and not blocking for the other jobs: no threshold yet, the figure is only for reading.
+  coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # llvm-tools: the llvm-profdata and llvm-cov of the toolchain, which cargo-llvm-cov calls.
+      - name: Install the Rust toolchain of rust-toolchain.toml
+        run: |
+          rustup toolchain install
+          rustup component add llvm-tools
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          save-if: ${{ github.ref == 'refs/heads/main' }}
+
+      - uses: taiki-e/install-action@cargo-llvm-cov
+
+      # The tests run once (instrumented build in target/llvm-cov-target); both reports are
+      # then made from the same profile data.
+      - name: Tests with coverage
+        run: cargo llvm-cov --workspace --locked --no-report
+
+      - name: Coverage by crate
+        run: |
+          cargo llvm-cov report --json --summary-only --output-path target/coverage.json
+          cargo xtask coverage target/coverage.json | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: HTML report
+        run: cargo llvm-cov report --html
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage-html
+          path: target/llvm-cov/html
+          if-no-files-found: error
+          retention-days: 30
+
   binaries:
     name: binaries (${{ matrix.os }})
     needs: checks
