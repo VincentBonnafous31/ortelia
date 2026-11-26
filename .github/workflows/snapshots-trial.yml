@@ -1,0 +1,102 @@
+# TEMPORARY: snapshot platform trial of the captures-images change (docs/essais/captures-images.md).
+# Runs the snapshot tests, against references made in WSL2, on four configurations, and keeps
+# each test log and the images of a failure. Removed before the merge: it never reaches main
+# (hence a push trigger rather than workflow_dispatch, which GitHub only offers for workflows of
+# the default branch).
+name: Snapshots trial
+
+on:
+  push:
+    branches: [captures-images]
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_PROFILE_DEV_DEBUG: line-tables-only
+
+jobs:
+  trial:
+    name: trial (${{ matrix.name }})
+    strategy:
+      # Every configuration is a measure: show them all, whatever the others do.
+      fail-fast: false
+      matrix:
+        include:
+          - name: ubuntu-latest
+            os: ubuntu-latest
+          # Same Ubuntu, hence same Mesa, as WSL2 on the development machine.
+          - name: ubuntu-26.04-container
+            os: ubuntu-latest
+            container: ubuntu:26.04
+          - name: macos-latest
+            os: macos-latest
+          - name: windows-latest
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    # An empty value (the other configurations) runs the job directly on the runner.
+    container: ${{ matrix.container }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      # The bare container has neither git, nor a C linker, nor rustup: installed first, so
+      # that the checkout uses git.
+      - name: Prepare the container
+        if: matrix.container != ''
+        run: |
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            ca-certificates curl git build-essential pkg-config mesa-vulkan-drivers
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \
+            | sh -s -- -y --profile minimal --default-toolchain none
+          echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+
+      - name: Install lavapipe
+        if: runner.os == 'Linux' && matrix.container == ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers
+
+      - uses: actions/checkout@v7
+
+      - name: Install the Rust toolchain of rust-toolchain.toml
+        run: rustup toolchain install
+
+      - name: Renderer version
+        run: |
+          case "$RUNNER_OS" in
+            Linux)
+              grep PRETTY_NAME /etc/os-release
+              dpkg-query -W mesa-vulkan-drivers libvulkan1 || true ;;
+            macOS)
+              sw_vers
+              system_profiler SPDisplaysDataType ;;
+            Windows)
+              powershell -NoProfile -Command \
+                "Get-CimInstance Win32_OperatingSystem | Format-List Caption, Version, BuildNumber" ;;
+          esac
+
+      # Builds first, so that the duration of the test step is the duration of the tests.
+      - name: Build the tests
+        run: cargo test -p ortelia-ui-egui --locked --no-run
+
+      # `--include-ignored`: outside Linux the snapshots are ignored, the trial runs them anyway.
+      # One thread and `--nocapture`: a readable log, with the adapter and the stability count.
+      - name: Snapshot tests
+        continue-on-error: true
+        run: |
+          cargo test -p ortelia-ui-egui --locked snapshot -- \
+            --include-ignored --nocapture --test-threads=1 2>&1 | tee snapshot-tests.log
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: snapshots-trial-${{ matrix.name }}
+          path: |
+            snapshot-tests.log
+            crates/ortelia-ui-egui/tests/snapshots/*.new.png
+            crates/ortelia-ui-egui/tests/snapshots/*.diff.png
+          if-no-files-found: error
+          retention-days: 30

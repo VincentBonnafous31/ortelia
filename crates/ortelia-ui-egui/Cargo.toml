@@ -14,8 +14,14 @@ egui.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
-# Headless tests of the whole eframe application, through the AccessKit tree (no GPU needed).
-egui_kittest = { workspace = true, features = ["eframe"] }
+# Headless tests of the whole eframe application, through the AccessKit tree (no GPU needed),
+# and snapshot tests: `wgpu` renders an image (with lavapipe, the Vulkan software renderer, on
+# Linux) and `snapshot` compares it to a reference PNG under tests/snapshots/.
+egui_kittest = { workspace = true, features = ["eframe", "wgpu", "snapshot"] }
+# Temporary reference of the test that checks that a different render fails the comparison.
+tempfile.workspace = true
+# Reads kittest.toml in the test that checks the snapshot tolerances.
+toml.workspace = true
 tracing-subscriber.workspace = true
 
 [lints]

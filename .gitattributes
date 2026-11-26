@@ -1,3 +1,5 @@
 # Keep LF line endings everywhere: files are edited on Windows and built in WSL / Linux,
 # where shell scripts with CRLF endings fail.
 * text=auto eol=lf
+# Snapshot references: never convert line endings in images.
+*.png binary

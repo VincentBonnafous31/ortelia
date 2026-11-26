@@ -17,3 +17,9 @@ Thumbs.db
 /tools/sandbox/sandbox.wsb
 /tools/sandbox/build/
 /tools/sandbox/logs/
+
+# Snapshot tests (egui_kittest): images written next to the references after a failure or an
+# update; only the references (<name>.png) are versioned
+**/tests/snapshots/**/*.new.png
+**/tests/snapshots/**/*.diff.png
+**/tests/snapshots/**/*.old.png

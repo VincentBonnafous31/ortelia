@@ -64,6 +64,13 @@ fn draw_main_window(ui: &mut egui::Ui, vm: &MainWindowViewModel) {
 }
 
 #[cfg(test)]
+mod snapshot_tests;
+
+// Temporary: the scene of the snapshot platform trial (docs/essais/captures-images.md).
+#[cfg(test)]
+mod snapshot_trial;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use egui_kittest::Harness;
@@ -80,7 +87,8 @@ mod tests {
     /// the test that captures it. Running these tests one at a time avoids that.
     static APP_TESTS: Mutex<()> = Mutex::new(());
 
-    fn lock_app_tests() -> MutexGuard<'static, ()> {
+    /// Also taken by the snapshot of the whole application (`snapshot_tests`).
+    pub(crate) fn lock_app_tests() -> MutexGuard<'static, ()> {
         // A test that panicked while holding the lock "poisons" it; the lock is still usable.
         APP_TESTS
             .lock()
