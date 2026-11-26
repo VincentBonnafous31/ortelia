@@ -79,6 +79,12 @@ else
     skip "clippy (Windows target)" "--no-windows"
 fi
 
+# The snapshot tests only match their references when rendered by lavapipe, the Vulkan software
+# renderer of Mesa (docs/essais/captures-images.md): without it, they fail with a pixel
+# difference or a render error that does not tell the cause.
+if ! dpkg-query -W mesa-vulkan-drivers >/dev/null 2>&1; then
+    fail "lavapipe" "missing package: sudo apt-get install mesa-vulkan-drivers"
+fi
 step "tests" cargo test --workspace --locked
 step "layer rule" cargo xtask check-layers
 step "JSON Schemas" cargo xtask gen-schemas --check

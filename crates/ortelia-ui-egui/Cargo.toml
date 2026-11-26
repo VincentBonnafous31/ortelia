@@ -20,8 +20,6 @@ tracing.workspace = true
 egui_kittest = { workspace = true, features = ["eframe", "wgpu", "snapshot"] }
 # Temporary reference of the test that checks that a different render fails the comparison.
 tempfile.workspace = true
-# Reads kittest.toml in the test that checks the snapshot tolerances.
-toml.workspace = true
 tracing-subscriber.workspace = true
 
 [lints]

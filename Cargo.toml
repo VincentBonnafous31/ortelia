@@ -40,8 +40,6 @@ serde = { version = "1.0.229", features = ["derive"] }
 schemars = { version = "1.2.3", features = ["derive", "preserve_order"] }
 serde_json = "1.0.154"
 tempfile = "3.27"
-# Same version as egui_kittest uses for kittest.toml: Cargo.lock keeps a single toml.
-toml = "1.2.2"
 tracing = "0.1.44"
 tracing-appender = "0.2.5"
 tracing-log = "0.2.0"

@@ -66,10 +66,6 @@ fn draw_main_window(ui: &mut egui::Ui, vm: &MainWindowViewModel) {
 #[cfg(test)]
 mod snapshot_tests;
 
-// Temporary: the scene of the snapshot platform trial (docs/essais/captures-images.md).
-#[cfg(test)]
-mod snapshot_trial;
-
 #[cfg(test)]
 mod tests {
     use super::*;

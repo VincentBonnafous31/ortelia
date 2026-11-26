@@ -32,7 +32,10 @@ jobs:
       # Show the result of both systems even if one fails.
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # The Linux image is fixed: the snapshot references are made in WSL2 with the Mesa of
+        # Ubuntu 26.04 (docs/essais/captures-images.md). Moving to another Ubuntu is a decision:
+        # same version in WSL2, then new references.
+        os: [ubuntu-26.04, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
@@ -53,8 +56,33 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --locked -- -D warnings
 
+      # Software rendering: lavapipe (Vulkan) renders the snapshot tests, and with Xvfb and Mesa
+      # (OpenGL) the smoke test draws in a virtual screen. winit loads libxkbcommon-x11 at run
+      # time under X11 and panics without it.
+      - name: Install the software rendering packages
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            xvfb mesa-vulkan-drivers libgl1-mesa-dri libegl1 libxkbcommon-x11-0
+
+      # On Linux, the tests include the snapshot tests; on Windows they are listed as ignored.
       - name: Tests
         run: cargo test --workspace --locked
+
+      # A failed snapshot writes <name>.new.png and <name>.diff.png next to its reference: kept
+      # for 30 days, to look at them without running the tests again
+      # (`gh run download <id> -n snapshots-linux`).
+      - name: Images of the failed snapshots
+        if: failure() && runner.os == 'Linux'
+        uses: actions/upload-artifact@v7
+        with:
+          name: snapshots-linux
+          path: |
+            crates/*/tests/snapshots/**/*.new.png
+            crates/*/tests/snapshots/**/*.diff.png
+          if-no-files-found: ignore
+          retention-days: 30
 
       - name: Layer rule
         run: cargo xtask check-layers
@@ -63,15 +91,6 @@ jobs:
       - name: JSON Schemas up to date
         if: runner.os == 'Linux'
         run: cargo xtask gen-schemas --check
-
-      # Software rendering in a virtual screen: Xvfb, lavapipe (Vulkan) and Mesa (OpenGL).
-      # winit loads libxkbcommon-x11 at run time under X11 and panics without it.
-      - name: Install the smoke test packages
-        if: runner.os == 'Linux'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            xvfb mesa-vulkan-drivers libgl1-mesa-dri libegl1 libxkbcommon-x11-0
 
       - name: Smoke test (Linux, Xvfb)
         if: runner.os == 'Linux'
@@ -89,7 +108,8 @@ jobs:
   # in the summary of the run and kept as an HTML report (detail by file and line). Linux only,
   # and not blocking for the other jobs: no threshold yet, the figure is only for reading.
   coverage:
-    runs-on: ubuntu-latest
+    # Same image as the Linux checks: the tests include the snapshot tests.
+    runs-on: ubuntu-26.04
     steps:
       - uses: actions/checkout@v7
 
@@ -104,6 +124,12 @@ jobs:
           save-if: ${{ github.ref == 'refs/heads/main' }}
 
       - uses: taiki-e/install-action@cargo-llvm-cov
+
+      # lavapipe, the Vulkan software renderer of the snapshot tests.
+      - name: Install the software rendering packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mesa-vulkan-drivers
 
       # The tests run once (instrumented build in target/llvm-cov-target); both reports are
       # then made from the same profile data.

@@ -10,7 +10,7 @@ Ce fichier guide Claude Code (claude.ai/code) dans ce dépôt.
 
 **Priorités** : rapidité et faible consommation mémoire. Fichiers jusqu'à environ 500 Mo, tables jusqu'à 100 000 lignes.
 
-**État** : incrément 0 terminé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale, version Windows validée dans le bac à sable. Incrément 1 (application 1 « Annuaire des personnes ») terminé, en deux changements OpenSpec, tous deux archivés. Le premier, `stockage-dynamique` (essai S1 : métamodèle, Store, constructeur, lecteur JSON, mesures), est terminé et archivé (spécifications `metamodel`, `object-store`, `data-loading`, `storage-benchmark`) : le Store retenu est un bloc de valeurs typées par objet (`docs/essais/s1-stockage.md`). Le second, `modele-et-donnees` (spécifications `change-tracking`, `app-config`, `app-context`, `config-schemas`), apporte `app.json` (format 0.3, `ortelia-config`), Document avec révision et journal des changements, fragments greffés sur une branche, erreurs rassemblées et diagnostics, ouverture d'une application (`AppContext::open`, `ortelia-service`), JSON Schema des fichiers de configuration (`schemas/`). Suivant : incrément 2 (vue avec une table).
+**État** : incrément 0 terminé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale, version Windows validée dans le bac à sable. Incrément 1 (application 1 « Annuaire des personnes ») terminé, en deux changements OpenSpec, tous deux archivés. Le premier, `stockage-dynamique` (essai S1 : métamodèle, Store, constructeur, lecteur JSON, mesures), est terminé et archivé (spécifications `metamodel`, `object-store`, `data-loading`, `storage-benchmark`) : le Store retenu est un bloc de valeurs typées par objet (`docs/essais/s1-stockage.md`). Le second, `modele-et-donnees` (spécifications `change-tracking`, `app-config`, `app-context`, `config-schemas`), apporte `app.json` (format 0.3, `ortelia-config`), Document avec révision et journal des changements, fragments greffés sur une branche, erreurs rassemblées et diagnostics, ouverture d'une application (`AppContext::open`, `ortelia-service`), JSON Schema des fichiers de configuration (`schemas/`). Incrément 2 (vue avec une table) en cours : le changement `captures-images` choisit la plateforme des captures d'images (lavapipe sous Linux) ; suivront `vue-table` et `etat-de-session`.
 
 ## Documents
 
@@ -24,6 +24,7 @@ Ce fichier guide Claude Code (claude.ai/code) dans ce dépôt.
 | `schemas/` | JSON Schema (draft 7) de `app.json` et des `*.model.json`, générés par `cargo xtask gen-schemas` ; les exemples y renvoient par leur clé `$schema` |
 | `examples/model-editor/metamodel.model.json` | Ébauche du métamodèle décrit avec lui-même (application 2) ; ne compile pas encore (attribut multivalué `literals`) |
 | `docs/essais/s1-stockage.md` | Essai S1 : conditions, mesures des deux Stores comparés, analyse, seuils et choix du Store |
+| `docs/essais/captures-images.md` | Essai des captures d'images : quatre configurations de la CI, pixels fautifs par seuil, choix de lavapipe sous Linux (`ubuntu-26.04`) |
 | `examples/reseau-meteo/` | Essai S1 : modèle d'essai `reseau.model.json` (réseau de stations météo, profondeur 4, listes polymorphes, zones découpées en mailles) et petit fichier conforme `reseau-exemple.json` |
 
 `docs/cadrage-prive/` contient des notes de conception privées : ne jamais le versionner, ne jamais citer son contenu dans un fichier versionné.
@@ -113,7 +114,7 @@ egui décrit chaque widget dans un arbre d'accessibilité (AccessKit) : l'interf
 |---|---|---|
 | 1. Tests de `ortelia-presentation` | toute la logique d'affichage | tests unitaires, sans interface |
 | 2. egui_kittest sans rendu | l'interface affiche le view-model ; les clics et les touches produisent les bonnes intentions | tests de `ortelia-ui-egui` (`Harness::new_eframe`, `get_by_label`) |
-| 3. Captures d'images | le rendu réel, comparé à une image de référence | pas encore : essai à l'incrément 2 (macOS en CI ou lavapipe) |
+| 3. Captures d'images | le rendu réel, comparé à une image de référence | tests de capture de `ortelia-ui-egui` (`src/snapshot_tests.rs`, références dans `tests/snapshots/`), sous Linux avec lavapipe |
 | 4. Test de fumée de l'exécutable | la vraie fenêtre s'ouvre et dessine sans erreur | `crates/ortelia/tests/smoke.rs` |
 | 5. Test manuel | l'impression générale, la version Windows | WSLg (`/lancer`) ; bac à sable Windows (`/bac-a-sable`, ou `tools/sandbox/run-sandbox.ps1 <dossier de ortelia.exe>` ; vGPU désactivé car il fait planter wgpu) |
 
@@ -122,6 +123,14 @@ egui décrit chaque widget dans un arbre d'accessibilité (AccessKit) : l'interf
 - Les tests de l'interface ne recalculent rien : ils vérifient ce qui est affiché et ce qui est émis.
 - Test de fumée : marqué `#[ignore]` (il faut un affichage), donc absent de `cargo test`. Le lancer avec `cargo test -p ortelia --test smoke -- --ignored` : dans WSLg en local, sous `xvfb-run -a` dans la CI Linux. Il attend `main window shown` dans le journal (20 s au plus) puis vérifie qu'Ortelia n'y a écrit aucune ligne `ERROR` (les lignes relayées des bibliothèques tierces ne comptent pas).
 - Les tests qui lancent l'exécutable sans argument (`crates/ortelia/tests/startup.rs`) ne tournent que sous Linux, sans affichage : sous Windows, la fenêtre s'ouvrirait vraiment.
+- Captures d'images (egui_kittest, features `wgpu` et `snapshot`) : chaque capture rend l'interface à 640 × 400, échelle 1, thème sombre, et la compare à `tests/snapshots/<nom>.png`, versionnée. Elles ne sont comparées que sous Linux, avec lavapipe (rendu logiciel Vulkan de Mesa), où le rendu est identique entre WSL2 et le runner `ubuntu-26.04` de la CI (`docs/essais/captures-images.md`). Ailleurs, elles sont signalées comme ignorées. Dans WSL2, lavapipe vient du paquet `mesa-vulkan-drivers`, comme dans la CI, et la version de Mesa doit rester celle d'Ubuntu 26.04.
+- Tolérances : `kittest.toml` à la racine (seuil par pixel 0,6, aucun pixel fautif ; sections `[windows]`, `[mac]`, `[linux]`, mais pas `[macos]`, qui fait échouer la lecture du fichier par egui_kittest). Un test vérifie que ce fichier est bien celui qu'egui_kittest utilise, et refuse un seuil au-delà de 0,6 ou plus de 10 pixels fautifs tolérés.
+- Mettre à jour une référence, dans WSL2 :
+  ```bash
+  UPDATE_SNAPSHOTS=1 cargo test -p ortelia-ui-egui      # remplace les références en échec
+  UPDATE_SNAPSHOTS=force cargo test -p ortelia-ui-egui  # les remplace toutes (montée de version d'egui)
+  ```
+  Regarder la nouvelle image avant de la versionner. L'ancienne est gardée en `<nom>.old.png` et l'écart en `<nom>.diff.png`. Un échec écrit `<nom>.new.png`, plus `<nom>.diff.png` si la taille n'a pas changé. Ces trois sortes d'images sont ignorées par git. Après un échec dans la CI : `gh run download <id> -n snapshots-linux`. Si une capture échoue en local alors que la CI passe, ou l'inverse, comparer d'abord les versions de Mesa (`dpkg-query -W mesa-vulkan-drivers`).
 - `tracing` met en cache l'intérêt de chaque point de journalisation : les tests qui vérifient un événement émis par du code que d'autres tests exécutent en parallèle sans subscriber doivent être sérialisés (voir `APP_TESTS` dans `ortelia-ui-egui`).
 
 ### Journalisation
@@ -169,8 +178,8 @@ Sous Windows, les deux scripts tournent dans WSL2 : `wsl -- bash -l tools/check.
 
 - Branche `main`, dépôt public `https://github.com/VincentBonnafous31/ortelia` (remote `origin`).
 - CI GitHub Actions (`.github/workflows/ci.yml`), à chaque poussée sur `main`, à chaque pull request vers `main` et à la demande :
-  - job `checks`, sous Linux et Windows, tout en `--locked` : `cargo fmt --all --check` (Linux), `cargo clippy --workspace --all-targets --locked -- -D warnings`, `cargo test --workspace --locked`, `cargo xtask check-layers`, `cargo xtask gen-schemas --check` (Linux), puis le test de fumée (Linux sous Xvfb, bloquant ; Windows non bloquant) ;
-  - job `coverage`, sous Linux, non bloquant pour les autres jobs : couverture du code par les tests, mesurée par cargo-llvm-cov. Le tableau par crate (lignes, fonctions, régions des fichiers de `src/`, modules de tests compris) s'affiche dans le résumé de l'exécution ; le rapport HTML, par fichier et par ligne, est l'artefact `coverage-html` (30 jours). Pas de seuil pour l'instant.
+  - job `checks`, sous Linux (image fixée `ubuntu-26.04`, pour les captures d'images) et Windows, tout en `--locked` : `cargo fmt --all --check` (Linux), `cargo clippy --workspace --all-targets --locked -- -D warnings`, installation du rendu logiciel (Linux : lavapipe, Xvfb, Mesa), `cargo test --workspace --locked` (captures d'images comprises sous Linux ; après un échec, leurs images forment l'artefact `snapshots-linux`, 30 jours), `cargo xtask check-layers`, `cargo xtask gen-schemas --check` (Linux), puis le test de fumée (Linux sous Xvfb, bloquant ; Windows non bloquant) ;
+  - job `coverage`, sous Linux (`ubuntu-26.04`, avec lavapipe), non bloquant pour les autres jobs : couverture du code par les tests, mesurée par cargo-llvm-cov. Le tableau par crate (lignes, fonctions, régions des fichiers de `src/`, modules de tests compris) s'affiche dans le résumé de l'exécution ; le rapport HTML, par fichier et par ligne, est l'artefact `coverage-html` (30 jours). Pas de seuil pour l'instant.
   - job `binaries`, hors pull requests : compilation release, `ortelia --version`, puis artefacts `ortelia-linux-x86_64` et `ortelia-windows-x86_64` (30 jours), téléchargeables depuis la page de l'exécution (`gh run download <id>`). C'est la seule source de la version Windows.
   - Seul `main` enregistre le cache Cargo (`Swatinem/rust-cache`).
 - Avant de pousser, lancer la même séquence en local : `tools/check.sh` (skill `/verifier`). Il vérifie aussi les lints propres à Windows (code réservé à Linux par `#[cfg]`, donc mort sous Windows) par Clippy pour la cible `x86_64-pc-windows-msvc`, sans édition de liens, donc sans les outils MSVC. La cible s'installe une fois : `rustup target add x86_64-pc-windows-msvc`.

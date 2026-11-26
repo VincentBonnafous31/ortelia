@@ -45,7 +45,7 @@ Les tests de capture sont des modules de test de la crate (`#[cfg(test)] mod sna
 ### 2. Dépendances
 
 - egui_kittest 0.37.0, en dépendance de développement de `ortelia-ui-egui`, passe des features `eframe` aux features `eframe`, `wgpu` et `snapshot`. Il ajoute `dify` (comparaison d'images) ; `image` 0.25.10 et wgpu 30.0.2 sont déjà dans `Cargo.lock`, par eframe. Une dépendance de développement est l'équivalent du scope `test` de Maven : l'exécutable `ortelia` n'en hérite pas.
-- toml 1.2.2, en dépendance de développement, pour le test qui lit `kittest.toml` (Decision 6). C'est la version qu'egui_kittest utilise déjà : `Cargo.lock` n'en gagne pas une seconde.
+- tempfile, déjà dans le workspace, en dépendance de développement, pour la référence temporaire du test « rendu différent » (Decision 5). Pas de toml : le test des tolérances (Decision 6) lit les valeurs par egui_kittest lui-même. Une relecture du fichier par toml 1.2.2 a été écrite, puis écartée par `/simplify` : elle répétait le chargeur d'egui_kittest.
 - Les features sont activées sur tous les systèmes, pas seulement sous Linux. Écarté : des dépendances de développement propres à Linux (`[target.'cfg(target_os = "linux")'.dev-dependencies]`). Il faudrait alors retirer le code des tests de la compilation ailleurs, et l'essai ne pourrait pas tourner sous macOS et Windows. Le coût sous Windows est faible : wgpu y est déjà compilé pour eframe.
 
 ### 3. Tests ignorés hors de Linux
@@ -93,7 +93,7 @@ threshold = 0.6
 max_failed_pixels = 0
 ```
 
-Les valeurs finales viennent de l'essai, avec une section `[linux]` si besoin. Un test lit le fichier (`concat!(env!("CARGO_MANIFEST_DIR"), "/../../kittest.toml")`, par toml) et vérifie que `max_failed_pixels` ne dépasse 10 ni à la racine ni dans les sections `[windows]`, `[mac]` et `[linux]`. Il refuse aussi une section `[macos]`, que le code d'egui_kittest ne lirait pas, malgré son README.
+Les valeurs finales viennent de l'essai, avec une section `[linux]` si besoin. Un test vérifie que le fichier qu'egui_kittest trouve, en remontant depuis la racine de la crate, est bien celui de la racine du dépôt. Il lit ensuite les valeurs qu'applique egui_kittest (`OsThreshold::<f32>::default()` et `OsThreshold::<usize>::default()`, pour chaque système), et vérifie que le seuil ne dépasse pas 0,6, ni `max_failed_pixels` 10. Une section `[macos]`, inconnue du chargeur d'egui_kittest malgré son README, le fait échouer à la lecture du fichier.
 
 ### 7. L'essai
 
@@ -162,7 +162,7 @@ Regarder la nouvelle image (et `*.old.png`, l'ancienne) avant de la versionner. 
 ## Risks / Trade-offs
 
 - [Mesa différent entre WSL2 (26.0.8) et le runner Ubuntu] → c'est ce que mesure l'essai ; le conteneur Ubuntu 26.04 est le repli qui aligne les versions.
-- [L'image `ubuntu-latest` change de version d'Ubuntu, donc de Mesa, sans prévenir] → fixer l'image du job qui compare les captures (`ubuntu-24.04`, ou le conteneur) quand l'essai désigne une configuration Linux.
+- [L'image `ubuntu-latest` change de version d'Ubuntu, donc de Mesa, sans prévenir] → fixer l'image du job qui compare les captures (`ubuntu-26.04`, celle de la version d'Ubuntu de WSL2, ou le conteneur) quand l'essai désigne une configuration Linux. Résultat de l'essai : `ubuntu-latest` était déjà Ubuntu 26.04 ; les jobs `checks` et `coverage` sont fixés sur `ubuntu-26.04`.
 - [Une mise à jour de Mesa dans WSL2 (`apt upgrade`) décale le rendu local] → la version de Mesa est notée dans le compte rendu. Si les captures échouent en local alors que la CI passe, comparer d'abord les versions de Mesa.
 - [Une montée de version d'egui change le rendu de toutes les captures] → `UPDATE_SNAPSHOTS=force`, puis revue des images de différence avant de versionner.
 - [Dans WSL2, un second adaptateur Vulkan existe (Direct3D 12 par le pilote dzn)] → egui_kittest préfère l'adaptateur CPU, donc lavapipe ; le compte rendu note l'adaptateur réellement choisi.

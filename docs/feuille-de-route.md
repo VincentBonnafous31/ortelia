@@ -7,7 +7,7 @@ Le développement avance par **applications jalons** : chacune est construite av
 | Étape | Incréments | Feuille de route | État |
 |---|---|---|---|
 | Socle | 0 | ci-dessous | terminé |
-| Application 1 « Annuaire des personnes » | 1 à 6 | [`feuille-de-route-annuaire.md`](feuille-de-route-annuaire.md) | en cours : incrément 1 |
+| Application 1 « Annuaire des personnes » | 1 à 6 | [`feuille-de-route-annuaire.md`](feuille-de-route-annuaire.md) | en cours : incrément 2 |
 | Application 2 « Éditeur de modèles » | 7 et 8 | [`feuille-de-route-editeur-modeles.md`](feuille-de-route-editeur-modeles.md) | à venir |
 
 La suite se décidera à la fin de l'application 2. Les pistes connues sont en fin de document.

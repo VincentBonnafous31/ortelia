@@ -9,7 +9,7 @@ Le modèle et les données d'abord, sans interface ; puis une table, un formulai
 | Inc. | Contenu | Essai technique en début d'incrément |
 |---|---|---|
 | 1 | Modèle et données, sans interface | S1 : stockage dynamique |
-| 2 | Vue avec une table | captures d'images : CI macOS ou lavapipe |
+| 2 | Vue avec une table | captures d'images : lavapipe sous Linux, retenu |
 | 3 | Split et panneau de propriétés en lecture seule | S3 : `egui_tiles` |
 | 4 | Choix de la langue | — |
 | 5 | Éditer et enregistrer | — |
@@ -84,7 +84,10 @@ Contenu :
 - Widget table : colonnes, tri multiple, filtre, largeur et ordre des colonnes, format des dates.
 - En-têtes de colonnes lus dans les libellés de `app.json`, par la recherche définitive (langue courante, puis l'autre langue, puis nom de l'attribut) mais avec une langue fixe : l'incrément 4 n'aura qu'à ajouter le choix.
 - État de session : la disposition de la table (largeurs, ordre, tri, filtre) et la taille de la fenêtre sont enregistrées à la fermeture et restaurées à l'ouverture, dans un fichier propre à l'utilisateur, rangé sous l'`id` de l'application. `app.json`, définition partagée et versionnée de l'application, n'est jamais modifié par l'utilisation.
-- Essai des tests par captures d'images (egui_kittest, features `wgpu` et `snapshot`), avec la table comme premier widget dont le rendu vaut d'être figé : choisir entre une machine macOS de la CI (vrai GPU) et le rendu logiciel lavapipe sous Linux. C'est le niveau 3 de la stratégie de tests de l'interface (`CLAUDE.md`) ; les niveaux 1, 2 et 4 existent depuis l'incrément 0.
+- Essai des tests par captures d'images (egui_kittest, features `wgpu` et `snapshot`) : choisir entre une machine macOS de la CI (vrai GPU) et le rendu logiciel lavapipe sous Linux. C'est le niveau 3 de la stratégie de tests de l'interface (`CLAUDE.md`) ; les niveaux 1, 2 et 4 existent depuis l'incrément 0. **Fait** (changement `captures-images`, compte rendu `docs/essais/captures-images.md`) :
+  - les captures sont comparées sous Linux avec lavapipe, sur le runner `ubuntu-26.04` de la CI, contre des références produites dans WSL2, sans aucun pixel fautif ;
+  - sous macOS (Metal) et Windows (WARP), l'anticrénelage du texte diffère, et une scène riche dépasse la tolérance ;
+  - la fenêtre principale a sa capture. Celle de la table viendra avec le changement `vue-table`.
 
 Si l'incrément s'avère trop gros, l'état de session peut en sortir pour former un incrément à part.
 
