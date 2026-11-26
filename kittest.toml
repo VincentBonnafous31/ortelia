@@ -1,0 +1,5 @@
+# Tolerances of the snapshot tests (egui_kittest); see docs/essais/captures-images.md.
+# egui_kittest finds this file by going up from the crate root; sections [windows], [mac] and
+# [linux] (not [macos]) override the values per system.
+threshold = 0.6
+max_failed_pixels = 0
