@@ -47,10 +47,10 @@ gh run download <id> -n ortelia-windows-x86_64 -D tools/sandbox/build/<id>
 Puis :
 
 ```
-powershell.exe -ExecutionPolicy Bypass -File tools/sandbox/run-sandbox.ps1 tools/sandbox/build/<id>
+powershell.exe -ExecutionPolicy Bypass -File tools/sandbox/test-windows.ps1 -RunId <id> -NoWait
 ```
 
-Le bac à sable démarre en une à deux minutes, puis `start.cmd` y lance `ortelia.exe` avec un journal en niveau `debug` dans `tools/sandbox/logs/` (dossier partagé avec le poste). Le vGPU est désactivé, car il fait planter wgpu : le rendu est logiciel (WARP), donc lent, et c'est normal.
+Le script réutilise l'exécutable téléchargé, copie `examples/annuaire` (sans son `app.session.json`) dans `tools/sandbox/app/` en y gardant l'état de session du test précédent (`-ResetSession` l'efface), puis lance `run-sandbox.ps1`. Le bac à sable démarre en une à deux minutes, puis `start.cmd` y lance `ortelia.exe` sur cette application, et place sur le bureau un fichier « Ortelia » qui le relance (pour vérifier la restauration de l'état de session), avec un journal en niveau `debug` dans `tools/sandbox/logs/` (dossier partagé avec le poste). Le vGPU est désactivé, car il fait planter wgpu : le rendu est logiciel (WARP), donc lent, et c'est normal.
 
 ## 4. Test manuel et compte rendu
 

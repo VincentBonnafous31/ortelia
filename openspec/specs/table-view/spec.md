@@ -14,7 +14,7 @@ Une vue table SHALL afficher une ligne par objet de la liste désignée par son 
 - **THEN** elle a dix lignes, dans l'ordre de `personnes.json`, la première étant Marie Dupont
 
 ### Requirement: Colonnes de la présentation
-Les colonnes SHALL être celles de la table de la présentation de la classe affichée, dans leur ordre. Sans présentation pour cette classe, celle de la classe mère la plus proche qui en a une SHALL s'appliquer.
+Les colonnes SHALL être celles de la table de la présentation de la classe affichée, dans leur ordre. Sans présentation pour cette classe, celle de la classe mère la plus proche qui en a une SHALL s'appliquer. Quand l'état de session de la vue est restauré, l'ordre des colonnes SHALL être celui qu'il enregistre (voir `session-state`).
 
 #### Scenario: Colonnes configurées
 - **WHEN** la présentation de `Personne` déclare les colonnes `nom`, `prenom` et `date_naissance`
@@ -39,11 +39,19 @@ L'en-tête d'une colonne SHALL être le libellé de son attribut. Si l'attribut 
 - **THEN** son en-tête est `Taille (m)`
 
 ### Requirement: Tri initial
-Au démarrage, la table SHALL être triée selon le `sort` de sa présentation, s'il y en a un, sinon dans l'ordre de la liste.
+Au démarrage, la table SHALL être triée selon le tri de l'état de session de sa vue, s'il est restauré (voir `session-state`), même vide ; sinon selon le `sort` de sa présentation, s'il y en a un ; sinon dans l'ordre de la liste.
 
 #### Scenario: Tri initial de l'annuaire
-- **WHEN** la présentation de `Personne` déclare le tri `nom` croissant
+- **WHEN** la présentation de `Personne` déclare le tri `nom` croissant, sans état de session
 - **THEN** la première ligne est Bernard et la dernière Robert
+
+#### Scenario: Tri de l'état de session
+- **WHEN** la présentation de `Personne` déclare le tri `nom` croissant, et que l'état de session restauré enregistre le tri `nom` décroissant
+- **THEN** la première ligne est Robert et la dernière Bernard
+
+#### Scenario: Tri retiré par l'utilisateur
+- **WHEN** la présentation de `Personne` déclare le tri `nom` puis `prenom`, et que l'état de session restauré enregistre un tri vide
+- **THEN** la table est dans l'ordre de la liste
 
 ### Requirement: Tri sur une colonne
 Un clic simple sur un en-tête SHALL trier sur cette seule colonne, en remplaçant le tri en cours. Les clics suivants sur la même colonne SHALL faire passer son sens de croissant à décroissant, puis à sans tri, puis de nouveau à croissant.
@@ -123,11 +131,15 @@ Le filtre SHALL s'appliquer à l'ordre trié : les lignes gardées restent dans 
 - **THEN** la table annonce 3 lignes affichées sur 10
 
 ### Requirement: Largeur des colonnes
-Chaque colonne SHALL avoir une largeur, celle de sa présentation, sinon une largeur par défaut selon son type. Le redimensionnement d'une colonne SHALL changer la largeur de cette colonne seulement, et cette largeur SHALL la suivre quand elle change de place.
+Chaque colonne SHALL avoir une largeur : celle de l'état de session de sa vue, s'il est restauré et l'enregistre (voir `session-state`), sinon celle de sa présentation, sinon une largeur par défaut selon son type. Le redimensionnement d'une colonne SHALL changer la largeur de cette colonne seulement, et cette largeur SHALL la suivre quand elle change de place.
 
 #### Scenario: Largeur qui suit sa colonne
 - **WHEN** on élargit la colonne `nom` à 200 points, puis qu'on la déplace en troisième position
 - **THEN** la colonne `nom` a toujours 200 points de large, et les autres colonnes gardent leur largeur
+
+#### Scenario: Largeur de l'état de session
+- **WHEN** la présentation donne 140 points à la colonne `nom`, et que l'état de session restauré lui en donne 180
+- **THEN** la colonne `nom` a 180 points de large
 
 ### Requirement: Ordre des colonnes
 On SHALL pouvoir déplacer une colonne en glissant son en-tête sur une autre position. Les autres colonnes gardent leur ordre relatif ; le tri et le filtre restent inchangés.
