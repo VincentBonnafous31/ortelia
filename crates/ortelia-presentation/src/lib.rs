@@ -12,10 +12,12 @@
 pub mod fold;
 pub mod format;
 pub mod labels;
+pub mod session;
 pub mod table;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
+use ortelia_config::{MAX_WINDOW_SIZE, MIN_WINDOW_SIZE};
 use ortelia_service::app::{AppContext, OpenError, SourceError, SourceStatus};
 
 pub use format::Cell;
@@ -23,6 +25,7 @@ pub use ortelia_config::{Align, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH};
 pub use table::{Column, TableIntent, TableRef, TableView};
 
 use labels::LabelLookup;
+use session::{SessionFile, ViewSession, WindowSession};
 
 /// The title of the window when no application could be opened.
 const DEFAULT_TITLE: &str = "Ortelia";
@@ -54,6 +57,12 @@ pub enum Intent {
     CloseDialog,
     /// Closes the window, and ends the program.
     Quit,
+    /// The window has a new size, in points, while neither maximized, nor in full screen,
+    /// nor minimized.
+    WindowResized {
+        width: f32,
+        height: f32,
+    },
 }
 
 /// The main window: its title and its initial size.
@@ -111,6 +120,11 @@ pub struct AppState {
     /// included; `None` without warning.
     status_bar: Option<String>,
     quit_requested: bool,
+    /// The last size of the window given by the interface, as received: not kept within
+    /// bounds, so that the interface, which compares it to the real size, sends it only once.
+    reported_size: Option<(f32, f32)>,
+    /// The session state file, for an application opened with its session state.
+    session_file: Option<PathBuf>,
 }
 
 #[derive(Debug)]
@@ -120,13 +134,101 @@ struct OpenedApp {
 }
 
 impl AppState {
-    /// Opens the application of the `app.json` at `path`. Cannot fail: an application that does
-    /// not open gives the state "in error", with the dialog of its errors.
+    /// Opens the application of the `app.json` at `path`, without session state: the layout
+    /// of `app.json`, and nothing written at the closing (tests, snapshots, measures). Cannot
+    /// fail: an application that does not open gives the state "in error", with the dialog of
+    /// its errors.
     pub fn open(path: &Path) -> AppState {
         match AppContext::open(path) {
             Ok(context) => AppState::opened(context),
             Err(error) => AppState::with_open_errors(open_error_lines(&error)),
         }
+    }
+
+    /// Opens the application of the `app.json` at `path` like [`AppState::open`], then restores
+    /// its session state file, if there is one; [`AppState::save_session`] writes it. Rust has
+    /// no overloading: two named functions, like two static factories in Java.
+    pub fn open_with_session(path: &Path) -> AppState {
+        let mut state = AppState::open(path);
+        if state.app.is_some() {
+            let file = session::file_for(path);
+            if let Some(saved) = session::load(&file) {
+                state.restore(&saved, &file);
+            }
+            state.session_file = Some(file);
+        }
+        state
+    }
+
+    /// Restores the size of the window and the views of `saved`: the views that the
+    /// application does not have are ignored.
+    fn restore(&mut self, saved: &SessionFile, file: &Path) {
+        if let Some(window) = &saved.window {
+            if let Some(width) = window
+                .width
+                .filter(|w| w.is_finite())
+                .map(bounded_window_size)
+            {
+                self.window.width = width;
+            }
+            if let Some(height) = window
+                .height
+                .filter(|h| h.is_finite())
+                .map(bounded_window_size)
+            {
+                self.window.height = height;
+            }
+        }
+        let mut restored = 0;
+        if let Some(app) = &mut self.app {
+            let model = app.context.document().model();
+            // The first table of the identifier counts: a newer version may describe another
+            // widget of the same view, without `table`, before it.
+            let table = saved
+                .views
+                .iter()
+                .filter(|v| v.id == app.table.id())
+                .find_map(|v| v.table.as_ref());
+            if let Some(table) = table {
+                app.table.restore(table, model);
+                restored += 1;
+            }
+        }
+        tracing::info!(path = %file.display(), views = restored, "session state restored");
+    }
+
+    /// The session state of the application: the size of the window, kept within bounds, and
+    /// the layout of each table. `None` if no application is open.
+    pub fn session(&self) -> Option<SessionFile> {
+        let app = self.app.as_ref()?;
+        let (width, height) = self.reported_window_size();
+        Some(SessionFile {
+            format_version: session::FORMAT_VERSION.to_owned(),
+            window: Some(WindowSession {
+                width: Some(bounded_window_size(width)),
+                height: Some(bounded_window_size(height)),
+            }),
+            views: vec![ViewSession {
+                id: app.table.id().to_owned(),
+                table: Some(app.table.session(app.context.document().model())),
+            }],
+        })
+    }
+
+    /// Writes the session state file, at the closing of the window. Does nothing without an
+    /// application, or for one opened without session state. `&self`: saving does not change
+    /// the state.
+    pub fn save_session(&self) {
+        if let (Some(file), Some(state)) = (&self.session_file, self.session()) {
+            session::save(file, &state);
+        }
+    }
+
+    /// The last size of the window given by [`Intent::WindowResized`], as received, or else
+    /// its initial size: the interface signals a size that differs from it.
+    pub fn reported_window_size(&self) -> (f32, f32) {
+        self.reported_size
+            .unwrap_or((self.window.width, self.window.height))
     }
 
     /// The state of an application that could not be opened, with its errors.
@@ -144,6 +246,8 @@ impl AppState {
             warnings: Vec::new(),
             status_bar: None,
             quit_requested: false,
+            reported_size: None,
+            session_file: None,
         }
     }
 
@@ -212,6 +316,8 @@ impl AppState {
                 n => Some(format!("⚠ {n} avertissements")),
             },
             quit_requested: false,
+            reported_size: None,
+            session_file: None,
         }
     }
 
@@ -298,6 +404,11 @@ impl AppState {
                 }
             }
             Intent::Quit => self.quit_requested = true,
+            Intent::WindowResized { width, height } => {
+                if width.is_finite() && height.is_finite() {
+                    self.reported_size = Some((width, height));
+                }
+            }
         }
     }
 
@@ -318,6 +429,11 @@ impl AppState {
     }
 }
 
+/// A size of the window, kept within the bounds of `window` in `app.json`.
+fn bounded_window_size(size: f32) -> f32 {
+    size.clamp(MIN_WINDOW_SIZE as f32, MAX_WINDOW_SIZE as f32)
+}
+
 /// The errors of an opening, one per line, each with the file in cause.
 fn open_error_lines(error: &OpenError) -> Vec<String> {
     match error {
@@ -329,6 +445,8 @@ fn open_error_lines(error: &OpenError) -> Vec<String> {
     }
 }
 
+#[cfg(test)]
+mod session_tests;
 #[cfg(test)]
 mod test_support;
 #[cfg(test)]

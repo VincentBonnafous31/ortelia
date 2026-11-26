@@ -61,7 +61,8 @@ fn run(path: Option<&Path>) -> ExitCode {
     // 5. The application. One that does not open still gets its window, with the dialog of
     //    its errors; the errors also go to the standard error and to the log.
     let file = cli::app_file(path);
-    let state = AppState::open(&file);
+    // With its session state: the layout of the last closing, saved again at this one.
+    let state = AppState::open_with_session(&file);
     for error in state.open_errors() {
         eprintln!("ortelia: {error}");
         tracing::error!("cannot open the application: {error}");

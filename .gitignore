@@ -23,3 +23,8 @@ Thumbs.db
 **/tests/snapshots/**/*.new.png
 **/tests/snapshots/**/*.diff.png
 **/tests/snapshots/**/*.old.png
+
+# Session state of the applications (window size, layout of the tables), written next to their
+# app.json when they close: a state of use, not a part of the definition
+*.session.json
+*.session.json.*.tmp

@@ -7,6 +7,8 @@ use std::sync::{Mutex, MutexGuard};
 use ortelia_service::app::AppContext;
 use tempfile::TempDir;
 
+use crate::{AppState, MainContent, TableRef};
+
 /// `tracing` caches, per call site, whether a subscriber is interested: a test without
 /// subscriber that reaches "missing label" first could hide the event from the test that
 /// captures the log. The tests that may reach it run one at a time.
@@ -26,6 +28,21 @@ pub fn examples() -> PathBuf {
 pub fn example(path: &str) -> String {
     let path = examples().join(path);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
+}
+
+/// The state of the application of `examples/annuaire`, without session state, prepared.
+pub fn open_example() -> AppState {
+    let mut state = AppState::open(&examples().join("annuaire/app.json"));
+    state.prepare();
+    state
+}
+
+/// The table of the window of an open application.
+pub fn table(state: &AppState) -> TableRef<'_> {
+    match state.content() {
+        MainContent::Table(table) => table,
+        MainContent::Nothing => panic!("no table"),
+    }
 }
 
 /// The application of `examples/annuaire`.
@@ -68,4 +85,57 @@ pub fn numbered_persons(count: usize) -> String {
         })
         .collect();
     format!("[{}]", persons.join(",\n"))
+}
+
+/// In-memory log output shared between the subscriber and the test.
+#[derive(Clone, Default)]
+pub struct SharedBuffer(std::sync::Arc<Mutex<Vec<u8>>>);
+
+impl SharedBuffer {
+    /// What was written, as text.
+    pub fn text(&self) -> String {
+        let bytes = self
+            .0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone();
+        String::from_utf8(bytes).expect("UTF-8")
+    }
+}
+
+impl std::io::Write for SharedBuffer {
+    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+        self.0
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .extend_from_slice(bytes);
+        Ok(bytes.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+/// Runs `f` with a subscriber that captures the log at every level, `trace` included, and
+/// returns its result and the log. The caller holds [`lock_log_tests`].
+pub fn capture_log<R>(f: impl FnOnce() -> R) -> (R, String) {
+    let buffer = SharedBuffer::default();
+    let writer = buffer.clone();
+    let subscriber = tracing_subscriber::fmt()
+        .with_writer(move || writer.clone())
+        .with_max_level(tracing::Level::TRACE)
+        .with_ansi(false)
+        .finish();
+    let result = tracing::subscriber::with_default(subscriber, f);
+    (result, buffer.text())
+}
+
+/// A copy of the application of `examples/annuaire` in a temporary folder: the tests that
+/// write a session state file never write in `examples/`.
+pub fn directory_copy() -> TempDir {
+    directory_with(
+        &example("annuaire/app.json"),
+        &example("annuaire/personnes.json"),
+    )
 }

@@ -9,6 +9,7 @@ use ortelia_service::app::AppContext;
 use super::{TableIntent, TableView};
 use crate::format::Cell;
 use crate::labels::LabelLookup;
+use crate::session::{ColumnSession, SortSession, TableSession};
 use crate::test_support::{directory, directory_with, example, lock_log_tests, numbered_persons};
 
 /// The table of an open application, in its first language, prepared.
@@ -642,4 +643,305 @@ fn no_computation_without_change() {
     filter(&mut table, &context, "dup");
     table.prepare(context.document());
     assert_eq!(table.row_computations, 2);
+}
+
+// --- Session state ---
+
+/// The table of the annuaire, restored from `saved`, then prepared.
+fn restored(context: &AppContext, saved: &TableSession) -> TableView {
+    let model = context.document().model();
+    let app = context.app();
+    let mut lookup = LabelLookup::new(&app.labels, model, &app.languages[0]);
+    let mut table = TableView::new(app, model, &mut lookup);
+    table.restore(saved, model);
+    table.prepare(context.document());
+    table
+}
+
+fn columns(saved: &[(&str, Option<f32>)]) -> Vec<ColumnSession> {
+    saved
+        .iter()
+        .map(|&(path, width)| ColumnSession {
+            path: path.to_owned(),
+            width,
+        })
+        .collect()
+}
+
+fn sort(saved: &[(&str, SortOrder)]) -> Option<Vec<SortSession>> {
+    Some(
+        saved
+            .iter()
+            .map(|&(path, order)| SortSession {
+                path: path.to_owned(),
+                order,
+            })
+            .collect(),
+    )
+}
+
+/// The width of the column of `name`.
+fn width(table: &TableView, context: &AppContext, name: &str) -> f32 {
+    table.columns[position(table, context, name)].width
+}
+
+/// The columns of the presentation of `Personne`, in their order.
+const PRESENTATION_COLUMNS: [&str; 8] = [
+    "nom",
+    "prenom",
+    "date_naissance",
+    "nombre_enfants",
+    "taille",
+    "contact_autorise",
+    "situation",
+    "inscription",
+];
+
+/// Scenario "Disposition modifiée" of `session-state`, for the table: what is computed after
+/// interactions.
+#[test]
+fn session_of_a_modified_layout() {
+    let context = directory();
+    let mut table = table(&context);
+    let from = position(&table, &context, "date_naissance");
+    apply(
+        &mut table,
+        &context,
+        TableIntent::MoveColumn { from, to: 0 },
+    );
+    let column = position(&table, &context, "nom");
+    apply(
+        &mut table,
+        &context,
+        TableIntent::ResizeColumn {
+            column,
+            width: 200.0,
+        },
+    );
+    click(&mut table, &context, "situation", false);
+    click(&mut table, &context, "nom", true);
+    click(&mut table, &context, "nom", true);
+    filter(&mut table, &context, "dup");
+    let session = table.session(context.document().model());
+    let names: Vec<&str> = session.columns.iter().map(|c| c.path.as_str()).collect();
+    assert_eq!(
+        names,
+        [
+            "date_naissance",
+            "nom",
+            "prenom",
+            "nombre_enfants",
+            "taille",
+            "contact_autorise",
+            "situation",
+            "inscription"
+        ]
+    );
+    assert_eq!(session.columns[1].width, Some(200.0));
+    assert_eq!(session.columns[2].width, Some(120.0));
+    assert_eq!(
+        session.sort,
+        sort(&[("situation", SortOrder::Asc), ("nom", SortOrder::Desc)])
+    );
+    assert_eq!(session.filter, "dup");
+}
+
+/// Scenario "Disposition inchangée" of `session-state`, for the table.
+#[test]
+fn session_of_an_unchanged_layout() {
+    let context = directory();
+    let table = table(&context);
+    let session = table.session(context.document().model());
+    let names: Vec<&str> = session.columns.iter().map(|c| c.path.as_str()).collect();
+    assert_eq!(names, PRESENTATION_COLUMNS);
+    assert_eq!(session.columns[0].width, Some(140.0));
+    assert_eq!(
+        session.sort,
+        sort(&[("nom", SortOrder::Asc), ("prenom", SortOrder::Asc)])
+    );
+    assert_eq!(session.filter, "");
+}
+
+/// What `session` gives, `restore` restores.
+#[test]
+fn session_restored() {
+    let context = directory();
+    let mut table = table(&context);
+    let from = position(&table, &context, "situation");
+    apply(
+        &mut table,
+        &context,
+        TableIntent::MoveColumn { from, to: 1 },
+    );
+    let column = position(&table, &context, "prenom");
+    apply(
+        &mut table,
+        &context,
+        TableIntent::ResizeColumn {
+            column,
+            width: 250.0,
+        },
+    );
+    click(&mut table, &context, "taille", false);
+    filter(&mut table, &context, "dup");
+    let session = table.session(context.document().model());
+    let again = restored(&context, &session);
+    assert_eq!(again.session(context.document().model()), session);
+    assert_eq!(names(&again, &context), names(&table, &context));
+}
+
+/// Scenario "Tri de l'état de session" of `table-view`.
+#[test]
+fn sort_of_the_session_state() {
+    let context = directory();
+    let saved = TableSession {
+        sort: sort(&[("nom", SortOrder::Desc)]),
+        ..TableSession::default()
+    };
+    let table = restored(&context, &saved);
+    let names = names(&table, &context);
+    assert_eq!(names[0], "Robert");
+    assert_eq!(names[9], "Bernard");
+}
+
+/// Scenario "Tri retiré par l'utilisateur" of `table-view`; without the key `sort`, the sort of
+/// the presentation stays.
+#[test]
+fn sort_removed_by_the_user() {
+    let context = directory();
+    let saved = TableSession {
+        sort: Some(Vec::new()),
+        ..TableSession::default()
+    };
+    let table = restored(&context, &saved);
+    assert!(table.sort.is_empty());
+    assert_eq!(names(&table, &context)[0], "Dupont");
+    let table = restored(&context, &TableSession::default());
+    assert_eq!(names(&table, &context)[0], "Bernard");
+}
+
+/// Scenario "Largeur de l'état de session" of `table-view`.
+#[test]
+fn width_of_the_session_state() {
+    let context = directory();
+    let saved = TableSession {
+        columns: columns(&[("nom", Some(180.0))]),
+        ..TableSession::default()
+    };
+    let table = restored(&context, &saved);
+    assert_eq!(width(&table, &context, "nom"), 180.0);
+}
+
+/// Scenario "Colonne disparue".
+#[test]
+fn column_gone() {
+    let context = directory();
+    let saved = TableSession {
+        columns: columns(&[
+            ("prenom", Some(150.0)),
+            ("surnom", Some(90.0)),
+            ("nom", Some(180.0)),
+        ]),
+        ..TableSession::default()
+    };
+    let table = restored(&context, &saved);
+    let names = column_names(&table, context.document().model());
+    assert_eq!(names.len(), 8);
+    assert_eq!(names[..2], ["prenom", "nom"]);
+    assert_eq!(width(&table, &context, "prenom"), 150.0);
+    assert_eq!(width(&table, &context, "nom"), 180.0);
+}
+
+/// Scenario "Tri sur une colonne disparue".
+#[test]
+fn sort_on_a_column_gone() {
+    let context = directory();
+    let saved = TableSession {
+        sort: sort(&[("surnom", SortOrder::Asc), ("nom", SortOrder::Desc)]),
+        ..TableSession::default()
+    };
+    let table = restored(&context, &saved);
+    assert_eq!(table.sort, [(attr(&context, "nom"), SortOrder::Desc)]);
+}
+
+/// Scenario "Colonne en double"; for a criterion twice too, the first counts.
+#[test]
+fn column_twice() {
+    let context = directory();
+    let saved = TableSession {
+        columns: columns(&[("nom", Some(180.0)), ("nom", Some(300.0))]),
+        sort: sort(&[("prenom", SortOrder::Desc), ("prenom", SortOrder::Asc)]),
+        ..TableSession::default()
+    };
+    let table = restored(&context, &saved);
+    assert_eq!(
+        column_names(&table, context.document().model()),
+        PRESENTATION_COLUMNS
+    );
+    assert_eq!(width(&table, &context, "nom"), 180.0);
+    assert_eq!(table.sort, [(attr(&context, "prenom"), SortOrder::Desc)]);
+}
+
+/// Scenario "Colonne nouvelle".
+#[test]
+fn new_columns() {
+    let context = directory();
+    let saved = TableSession {
+        columns: columns(&[("prenom", Some(150.0)), ("nom", Some(180.0))]),
+        ..TableSession::default()
+    };
+    let table = restored(&context, &saved);
+    assert_eq!(
+        column_names(&table, context.document().model()),
+        [
+            "prenom",
+            "nom",
+            "date_naissance",
+            "nombre_enfants",
+            "taille",
+            "contact_autorise",
+            "situation",
+            "inscription"
+        ]
+    );
+    // The widths of the presentation, or of the type, for the others.
+    let fresh = table_of(context.app(), &context);
+    for name in &PRESENTATION_COLUMNS[2..] {
+        assert_eq!(width(&table, &context, name), width(&fresh, &context, name));
+    }
+}
+
+/// Scenario "Largeur hors bornes"; a width missing or not finite is ignored.
+#[test]
+fn width_out_of_bounds() {
+    let context = directory();
+    let saved = TableSession {
+        columns: columns(&[
+            ("nom", Some(5.0)),
+            ("prenom", Some(9000.0)),
+            ("taille", Some(f32::NAN)),
+            ("situation", None),
+        ]),
+        ..TableSession::default()
+    };
+    let table = restored(&context, &saved);
+    let fresh = table_of(context.app(), &context);
+    assert_eq!(width(&table, &context, "nom"), 20.0);
+    assert_eq!(width(&table, &context, "prenom"), 2000.0);
+    for name in ["taille", "situation"] {
+        assert_eq!(width(&table, &context, name), width(&fresh, &context, name));
+    }
+}
+
+/// The filter is restored.
+#[test]
+fn filter_restored() {
+    let context = directory();
+    let saved = TableSession {
+        filter: "dup".to_owned(),
+        ..TableSession::default()
+    };
+    let table = restored(&context, &saved);
+    assert_eq!(names(&table, &context), ["Dupont"]);
+    assert_eq!(table.read(context.document()).filter(), "dup");
 }

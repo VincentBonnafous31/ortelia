@@ -2643,6 +2643,8 @@ dependencies = [
  "ortelia-config",
  "ortelia-model",
  "ortelia-service",
+ "serde",
+ "serde_json",
  "tempfile",
  "tracing",
  "tracing-subscriber",

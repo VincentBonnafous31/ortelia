@@ -3,7 +3,7 @@
 use std::fmt;
 
 use ortelia_model::metamodel::without_position;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 use crate::pattern::PatternError;
 
@@ -160,7 +160,8 @@ pub struct SortDef {
 }
 
 /// The direction of a sort.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
+// `Serialize`: the presentation writes it in the session state file, with the same names.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize, Serialize)]
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(rename_all = "lowercase")]
 pub enum SortOrder {

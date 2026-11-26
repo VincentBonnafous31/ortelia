@@ -24,6 +24,7 @@ use ortelia_model::value::Value;
 use crate::fold::{fold, fold_into};
 use crate::format::{Cell, Conventions, ValueFormat, default_align, default_width};
 use crate::labels::LabelLookup;
+use crate::session::{ColumnSession, SortSession, TableSession};
 
 /// The separator of the columns in the text of a row prepared for the filter: a word of the
 /// filter, cut at the spaces, cannot hold it, so "each word in at least one column" is "each
@@ -223,8 +224,7 @@ impl TableView {
             }
             TableIntent::ResizeColumn { column, width } => {
                 if let Some(column) = self.columns.get_mut(column) {
-                    // The bounds of `app.json`: a width kept here can be written there.
-                    column.width = width.clamp(MIN_COLUMN_WIDTH as f32, MAX_COLUMN_WIDTH as f32);
+                    column.width = bounded_width(width);
                 }
             }
         }
@@ -251,6 +251,79 @@ impl TableView {
             }
             (None, None) => {}
         }
+    }
+
+    /// The layout of the table, for the session state: the columns in the order shown with
+    /// their width, the sort and the filter. Columns and criteria are named by the name of
+    /// their attribute.
+    pub fn session(&self, model: &Model) -> TableSession {
+        let name = |attr: AttrId| model.attribute(attr).name().to_owned();
+        TableSession {
+            columns: self
+                .columns
+                .iter()
+                .map(|c| ColumnSession {
+                    path: name(c.attr),
+                    width: Some(c.width),
+                })
+                .collect(),
+            sort: Some(
+                self.sort
+                    .iter()
+                    .map(|&(attr, order)| SortSession {
+                        path: name(attr),
+                        order,
+                    })
+                    .collect(),
+            ),
+            filter: self.filter.clone(),
+        }
+    }
+
+    /// Restores a layout saved by [`TableView::session`], once, just after `new`. `app.json`
+    /// may have changed since: the saved columns and criteria that name no column of the table,
+    /// or one already seen, are ignored; the columns of the table that `saved` does not name
+    /// follow the others, in the order of the presentation, with their width.
+    pub fn restore(&mut self, saved: &TableSession, model: &Model) {
+        // A linear search by name: fewer than a hundred columns.
+        let find = |columns: &[Column], path: &str| {
+            columns
+                .iter()
+                .position(|c| model.attribute(c.attr).name() == path)
+        };
+
+        // The columns not placed yet stay in `rest`, in their order.
+        let mut rest = std::mem::take(&mut self.columns);
+        for column in &saved.columns {
+            if let Some(position) = find(&rest, &column.path) {
+                let mut placed = rest.remove(position);
+                if let Some(width) = column.width.filter(|w| w.is_finite()) {
+                    placed.width = bounded_width(width);
+                }
+                self.columns.push(placed);
+            }
+        }
+        self.columns.append(&mut rest);
+
+        if let Some(sort) = &saved.sort {
+            self.sort.clear();
+            for criterion in sort {
+                if let Some(position) = find(&self.columns, &criterion.path) {
+                    let attr = self.columns[position].attr;
+                    if !self.sort.iter().any(|&(a, _)| a == attr) {
+                        self.sort.push((attr, criterion.order));
+                    }
+                }
+            }
+        }
+        self.filter = saved.filter.clone();
+        // The indexes are computed by the first `prepare`, as at any opening; `layout` stays:
+        // egui has not kept any width yet.
+    }
+
+    /// The identifier of the view.
+    pub fn id(&self) -> &str {
+        &self.id
     }
 
     /// The table, as the user interface reads it.
@@ -344,6 +417,12 @@ impl TableView {
             })
             .collect();
     }
+}
+
+/// A width of a column, kept within the bounds of `app.json`: a width kept here can be
+/// written there.
+fn bounded_width(width: f32) -> f32 {
+    width.clamp(MIN_COLUMN_WIDTH as f32, MAX_COLUMN_WIDTH as f32)
 }
 
 /// Builds a column: its header and the labels of its literals are looked up here, once.
