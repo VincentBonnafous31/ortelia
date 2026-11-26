@@ -2,14 +2,18 @@
 //!
 //! Tasks:
 //! - `check-layers`: checks the layer rule of the workspace (see `layers.rs`);
+//! - `coverage`: the test coverage of each crate, from a summary of cargo-llvm-cov (see
+//!   `coverage.rs`);
 //! - `gen-data`: writes a data file for the S1 storage trial (see `gen_data.rs`);
 //! - `gen-schemas`: writes the JSON Schemas of the configuration files (see `schemas.rs`).
 
+mod coverage;
 mod gen_data;
 mod layers;
 mod schemas;
 
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use cargo_metadata::{CargoOpt, DependencyKind, Metadata, MetadataCommand};
@@ -20,6 +24,8 @@ const USAGE: &str = "usage: cargo xtask <task>
 
 tasks:
   check-layers   check the layer rule of the workspace
+  coverage FILE  print the test coverage of each crate as a Markdown table, from the summary
+                 written by `cargo llvm-cov report --json --summary-only --output-path FILE`
   gen-data       write a data file for the S1 storage trial (see `cargo xtask gen-data --help`)
   gen-schemas    write the JSON Schemas of app.json and of the model files in schemas/;
                  with --check, only check that they are up to date";
@@ -29,12 +35,53 @@ fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
         Some("check-layers") if args.len() == 1 => check_layers(),
+        Some("coverage") if args.len() == 2 => coverage(Path::new(&args[1])),
         Some("gen-data") => gen_data(&args[1..]),
         Some("gen-schemas") if args.len() == 1 => gen_schemas(),
         Some("gen-schemas") if args.len() == 2 && args[1] == "--check" => check_schemas(),
         _ => {
             eprintln!("{USAGE}");
             ExitCode::from(2)
+        }
+    }
+}
+
+fn coverage(summary: &Path) -> ExitCode {
+    let export = match std::fs::read_to_string(summary)
+        .map_err(|error| error.to_string())
+        .and_then(|text| serde_json::from_str(&text).map_err(|error| error.to_string()))
+    {
+        Ok(export) => export,
+        Err(error) => {
+            eprintln!("error: cannot read {}: {error}", summary.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let metadata = match MetadataCommand::new().no_deps().exec() {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            eprintln!("error: cannot read the workspace metadata: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    // Each crate with the folder of its Cargo.toml, by name.
+    let mut crates: Vec<(String, PathBuf)> = metadata
+        .workspace_packages()
+        .into_iter()
+        .filter_map(|package| {
+            let dir = package.manifest_path.parent()?;
+            Some((package.name.to_string(), dir.as_std_path().to_owned()))
+        })
+        .collect();
+    crates.sort();
+    match coverage::summarize(&export, &crates) {
+        Ok(rows) => {
+            print!("{}", coverage::render(&rows));
+            ExitCode::SUCCESS
+        }
+        Err(message) => {
+            eprintln!("error: {}: {message}", summary.display());
+            ExitCode::FAILURE
         }
     }
 }
