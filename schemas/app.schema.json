@@ -275,7 +275,12 @@
           "type": "string"
         },
         "order": {
-          "$ref": "#/definitions/SortOrder"
+          "default": "asc",
+          "allOf": [
+            {
+              "$ref": "#/definitions/SortOrder"
+            }
+          ]
         }
       },
       "additionalProperties": false,

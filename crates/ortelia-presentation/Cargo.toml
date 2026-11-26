@@ -13,6 +13,8 @@ ortelia-config.workspace = true
 ortelia-service.workspace = true
 icu_normalizer.workspace = true
 jiff.workspace = true
+serde.workspace = true
+serde_json.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

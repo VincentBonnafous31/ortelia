@@ -40,8 +40,15 @@ fn main_window_is_shown() {
     let temp = tempfile::tempdir().unwrap();
     let logs = temp.path().join("logs");
     // The directory example: the window shows its table, and an error of the opening or of
-    // the drawing would be logged.
-    let annuaire = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/annuaire");
+    // the drawing would be logged. A copy, because the window saves its session state next to
+    // `app.json` when its event loop ends, which a display that goes away (WSLg) can cause
+    // before the process is killed.
+    let example = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/annuaire");
+    let annuaire = temp.path().join("annuaire");
+    fs::create_dir(&annuaire).unwrap();
+    for name in ["app.json", "annuaire.model.json", "personnes.json"] {
+        fs::copy(example.join(name), annuaire.join(name)).unwrap();
+    }
     let child = Command::new(env!("CARGO_BIN_EXE_ortelia"))
         .arg(&annuaire)
         .env("ORTELIA_LOG_DIR", &logs)

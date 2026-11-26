@@ -1,28 +1,15 @@
 //! Tests of the state of the application (specifications `app-launch` and `labels`): opened or
 //! in error, dialogs, status bar, intents.
 
-use std::sync::{Arc, Mutex};
-
 use super::*;
-use crate::test_support::{directory_with, example, examples, folder, lock_log_tests};
-
-fn open_example() -> AppState {
-    let mut state = AppState::open(&examples().join("annuaire/app.json"));
-    state.prepare();
-    state
-}
+use crate::test_support::{
+    capture_log, directory_with, example, folder, lock_log_tests, open_example, table,
+};
 
 fn open_dir(dir: &tempfile::TempDir) -> AppState {
     let mut state = AppState::open(&dir.path().join("app.json"));
     state.prepare();
     state
-}
-
-fn table(state: &AppState) -> TableRef<'_> {
-    match state.content() {
-        MainContent::Table(table) => table,
-        MainContent::Nothing => panic!("no table"),
-    }
 }
 
 /// The annuaire without the French labels of `Personne.prenom` and `SituationFamiliale.VEUF`.
@@ -145,24 +132,6 @@ fn diagnostics_are_warnings() {
     assert_eq!(state.status_bar(), Some("⚠ 1 avertissement"));
 }
 
-/// In-memory log output shared between the subscriber and the test.
-#[derive(Clone, Default)]
-struct SharedBuffer(Arc<Mutex<Vec<u8>>>);
-
-impl std::io::Write for SharedBuffer {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        self.0
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 /// Scenarios "Libellés manquants" (`app-launch`) and "Deux libellés manquants" (`labels`): two
 /// warnings, each once, logged at the `WARN` level.
 #[test]
@@ -170,13 +139,7 @@ fn missing_labels() {
     let _lock = lock_log_tests();
     let persons = example("annuaire/personnes.json");
     let dir = directory_with(&two_missing_labels(), &persons);
-    let buffer = SharedBuffer::default();
-    let writer = buffer.clone();
-    let subscriber = tracing_subscriber::fmt()
-        .with_writer(move || writer.clone())
-        .with_ansi(false)
-        .finish();
-    let mut state = tracing::subscriber::with_default(subscriber, || open_dir(&dir));
+    let (mut state, log) = capture_log(|| open_dir(&dir));
     for _ in 0..3 {
         state.prepare();
     }
@@ -195,7 +158,6 @@ fn missing_labels() {
     // The header and the literal show their key.
     let table = table(&state);
     assert_eq!(table.columns()[1].header(), "#Personne.prenom#");
-    let log = String::from_utf8(buffer.0.lock().expect("log").clone()).expect("UTF-8");
     let warnings: Vec<&str> = log
         .lines()
         .filter(|l| l.contains("missing label"))

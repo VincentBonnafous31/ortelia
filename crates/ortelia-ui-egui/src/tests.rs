@@ -43,9 +43,9 @@ pub(crate) fn directory() -> AppState {
     AppState::open(&examples().join("annuaire/app.json"))
 }
 
-/// The state of the directory application with another `app.json` and `personnes.json`,
-/// written in a temporary folder.
-fn directory_with(app: &str, persons: &str) -> AppState {
+/// The directory application with another `app.json` and `personnes.json`, written in a
+/// temporary folder.
+fn folder_with(app: &str, persons: &str) -> tempfile::TempDir {
     let dir = tempfile::tempdir().expect("temporary folder");
     for (name, content) in [
         ("app.json", app.to_owned()),
@@ -57,8 +57,13 @@ fn directory_with(app: &str, persons: &str) -> AppState {
     ] {
         std::fs::write(dir.path().join(name), content).expect("write");
     }
+    dir
+}
+
+/// The state of the directory application with another `app.json` and `personnes.json`.
+fn directory_with(app: &str, persons: &str) -> AppState {
     // Everything is read at the opening: the folder can go.
-    AppState::open(&dir.path().join("app.json"))
+    AppState::open(&folder_with(app, persons).path().join("app.json"))
 }
 
 /// A state and the intents its drawing gave, not dispatched: the tests check what the
@@ -361,6 +366,273 @@ fn first_frame_is_logged_once() {
     });
     let log = String::from_utf8(buffer.0.lock().unwrap().clone()).unwrap();
     assert_eq!(log.matches("main window shown").count(), 1, "{log}");
+}
+
+// --- Session state ---
+
+fn viewport(
+    maximized: Option<bool>,
+    fullscreen: Option<bool>,
+    minimized: Option<bool>,
+) -> egui::ViewportInfo {
+    egui::ViewportInfo {
+        maximized,
+        fullscreen,
+        minimized,
+        ..Default::default()
+    }
+}
+
+/// A new size is signalled; the same one, within half a point, is not.
+#[test]
+fn window_intent_of_a_new_size() {
+    let normal = viewport(None, Some(false), None);
+    assert_eq!(
+        window_intent(egui::vec2(1200.0, 800.0), &normal, (1000.0, 700.0)),
+        Some(Intent::WindowResized {
+            width: 1200.0,
+            height: 800.0
+        })
+    );
+    assert_eq!(
+        window_intent(egui::vec2(1000.4, 699.6), &normal, (1000.0, 700.0)),
+        None
+    );
+    assert!(window_intent(egui::vec2(1000.0, 700.6), &normal, (1000.0, 700.0)).is_some());
+}
+
+/// Maximized, in full screen, minimized or of a null surface: no intent.
+#[test]
+fn window_intent_ignored() {
+    let size = egui::vec2(1920.0, 1080.0);
+    let reported = (1000.0, 700.0);
+    for info in [
+        viewport(Some(true), None, None),
+        viewport(None, Some(true), None),
+        viewport(None, None, Some(true)),
+    ] {
+        assert_eq!(window_intent(size, &info, reported), None, "{info:?}");
+    }
+    let normal = viewport(Some(false), Some(false), Some(false));
+    assert_eq!(window_intent(egui::vec2(0.0, 0.0), &normal, reported), None);
+    assert_eq!(
+        window_intent(egui::vec2(800.0, 0.0), &normal, reported),
+        None
+    );
+}
+
+/// A harness of the size of the window of the directory (1000 × 700) that signals the size of
+/// the window as the application does, and records the intents.
+fn window_recorder(state: AppState) -> Harness<'static, Recorder> {
+    let mut tracker = WindowTracker::default();
+    Harness::builder()
+        .with_size(egui::vec2(1000.0, 700.0))
+        .build_ui_state(
+            move |ui, recorder: &mut Recorder| {
+                if let Some(intent) = tracker.intent(ui.ctx(), &recorder.state) {
+                    recorder.intents.push(intent.clone());
+                    recorder.state.dispatch(intent);
+                }
+            },
+            Recorder {
+                state,
+                intents: Vec::new(),
+            },
+        )
+}
+
+/// The intents of size: the only ones `window_recorder` records.
+fn window_intents(harness: &Harness<'_, Recorder>) -> Vec<Intent> {
+    harness.state().intents.clone()
+}
+
+/// The size of the window of the session state.
+fn saved_window(harness: &Harness<'_, Recorder>) -> (Option<f32>, Option<f32>) {
+    let saved = harness.state().state.session().expect("open");
+    let window = saved.window.expect("window");
+    (window.width, window.height)
+}
+
+/// Scenario "Fenêtre redimensionnée": a single intent.
+#[test]
+fn window_resized_once() {
+    let mut harness = window_recorder(directory());
+    // The user is in the window.
+    harness.hover_at(egui::pos2(10.0, 10.0));
+    harness.run();
+    assert_eq!(window_intents(&harness), []);
+    harness.set_size(egui::vec2(1200.0, 800.0));
+    harness.run_steps(5);
+    assert_eq!(
+        window_intents(&harness),
+        [Intent::WindowResized {
+            width: 1200.0,
+            height: 800.0
+        }]
+    );
+    assert_eq!(saved_window(&harness), (Some(1200.0), Some(800.0)));
+}
+
+/// Scenario "Fenêtre maximisée".
+#[test]
+fn window_maximized() {
+    let mut harness = window_recorder(directory());
+    harness.hover_at(egui::pos2(10.0, 10.0));
+    harness.set_size(egui::vec2(1100.0, 750.0));
+    harness.run();
+    harness
+        .input_mut()
+        .viewports
+        .get_mut(&egui::ViewportId::ROOT)
+        .expect("root viewport")
+        .maximized = Some(true);
+    harness.set_size(egui::vec2(1920.0, 1080.0));
+    harness.run_steps(5);
+    assert_eq!(
+        window_intents(&harness),
+        [Intent::WindowResized {
+            width: 1100.0,
+            height: 750.0
+        }]
+    );
+    assert_eq!(saved_window(&harness), (Some(1100.0), Some(750.0)));
+}
+
+/// Scenario "Taille provisoire avant toute action": nothing is signalled before the first
+/// action of the user; then, the size the user sees.
+#[test]
+fn provisional_size_before_any_action() {
+    let mut harness = window_recorder(directory());
+    harness.set_size(egui::vec2(640.0, 480.0));
+    harness.run_steps(5);
+    // The gain of the focus is not an action of the user.
+    harness.event(egui::Event::WindowFocused(true));
+    harness.run_steps(2);
+    assert_eq!(window_intents(&harness), []);
+    assert_eq!(saved_window(&harness), (Some(1000.0), Some(700.0)));
+    harness.hover_at(egui::pos2(10.0, 10.0));
+    harness.run();
+    assert_eq!(
+        window_intents(&harness),
+        [Intent::WindowResized {
+            width: 640.0,
+            height: 480.0
+        }]
+    );
+}
+
+/// The zoom of egui (Ctrl+plus) changes the points of egui, not the size of the window: no
+/// intent, and the size signalled is the one of the window.
+#[test]
+fn zoom_is_not_a_resize() {
+    let mut harness = window_recorder(directory());
+    harness.hover_at(egui::pos2(10.0, 10.0));
+    harness.run();
+    harness.ctx.set_zoom_factor(1.25);
+    harness.run_steps(3);
+    assert_eq!(window_intents(&harness), []);
+    harness.set_size(egui::vec2(960.0, 640.0));
+    harness.run_steps(3);
+    assert_eq!(
+        window_intents(&harness),
+        [Intent::WindowResized {
+            width: 1200.0,
+            height: 800.0
+        }]
+    );
+}
+
+/// The events that only the user causes.
+#[test]
+fn user_actions() {
+    assert!(is_user_action(&egui::Event::PointerMoved(egui::pos2(
+        1.0, 1.0
+    ))));
+    assert!(is_user_action(&egui::Event::Text("a".into())));
+    assert!(!is_user_action(&egui::Event::WindowFocused(true)));
+    assert!(!is_user_action(&egui::Event::PointerGone));
+}
+
+/// A copy of the application of `examples/annuaire` in a temporary folder.
+fn directory_copy() -> tempfile::TempDir {
+    folder_with(
+        &example("annuaire/app.json"),
+        &example("annuaire/personnes.json"),
+    )
+}
+
+/// The width of the column of header `header`, and the indicator of its sort.
+fn column_state(state: &AppState, header: &str) -> (f32, Option<String>) {
+    let MainContent::Table(table) = state.content() else {
+        panic!("no table");
+    };
+    let column = table
+        .columns()
+        .iter()
+        .position(|c| c.header() == header)
+        .expect("column");
+    (
+        table.columns()[column].width(),
+        table.sort_indicator(column),
+    )
+}
+
+/// Scenario "Fermeture puis réouverture".
+#[test]
+fn closed_then_opened_again() {
+    use eframe::App as _;
+    let _lock = lock_app_tests();
+    let dir = directory_copy();
+    let app = dir.path().join("app.json");
+    let mut harness = Harness::new_eframe(|_cc| OrteliaApp::new(AppState::open_with_session(&app)));
+    harness.run();
+    // `nom` (140 points) widened by its resize handle, as a user does: egui keeps the widths
+    // it draws, and gives them to the presentation.
+    let nom = harness
+        .get_by_role_and_label(Role::ColumnHeader, "Nom")
+        .rect();
+    let edge = egui::pos2(nom.right() + 4.0, nom.center().y);
+    harness.hover_at(edge);
+    harness.run();
+    harness.drag_at(edge);
+    harness.run();
+    for step in 1..=4 {
+        harness.hover_at(edge + egui::vec2(15.0 * step as f32, 0.0));
+        harness.run();
+    }
+    harness.drop_at(edge + egui::vec2(60.0, 0.0));
+    harness.run();
+    // `prenom` is the second criterion of the presentation: a click sorts on it alone,
+    // descending, the next one removes the sort, the third sorts ascending.
+    for _ in 0..3 {
+        harness
+            .get_by_role_and_label(Role::ColumnHeader, "Prénom")
+            .click();
+        harness.run();
+    }
+    let (width, sort) = column_state(&harness.state().state, "Nom");
+    assert!((190.0..=210.0).contains(&width), "{width}");
+    assert_eq!(sort, None);
+    harness.state_mut().on_exit();
+    assert!(dir.path().join("app.session.json").is_file());
+
+    let mut state = AppState::open_with_session(&app);
+    state.prepare();
+    assert_eq!(column_state(&state, "Nom"), (width, None));
+    assert_eq!(column_state(&state, "Prénom").1.as_deref(), Some("⏶"));
+}
+
+/// The closing of an application opened without session state writes nothing.
+#[test]
+fn closing_without_session_state() {
+    use eframe::App as _;
+    let _lock = lock_app_tests();
+    let dir = directory_copy();
+    let app = dir.path().join("app.json");
+    let mut harness = Harness::new_eframe(|_cc| OrteliaApp::new(AppState::open(&app)));
+    harness.run();
+    harness.state_mut().on_exit();
+    assert_eq!(std::fs::read_dir(dir.path()).expect("read").count(), 3);
 }
 
 /// Once drawn, a table that nobody touches emits nothing: no intent, so no repaint asked
