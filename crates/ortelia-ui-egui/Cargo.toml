@@ -10,7 +10,9 @@ publish.workspace = true
 [dependencies]
 ortelia-presentation.workspace = true
 eframe.workspace = true
-egui.workspace = true
+# `monochrome_emoji_fonts`: the symbols ⏶, ⏷ and ⚠ (not in the default fonts).
+egui = { workspace = true, features = ["monochrome_emoji_fonts"] }
+egui_extras.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]

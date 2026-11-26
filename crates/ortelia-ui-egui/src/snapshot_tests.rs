@@ -10,9 +10,9 @@
 //! in the same package, it sees the private items (`OrteliaApp`, `draw_main_window`).
 
 use super::*;
-use crate::tests::lock_app_tests;
+use crate::tests::{directory, lock_app_tests};
 use egui_kittest::{Harness, HarnessBuilder, OsThreshold, SnapshotError, SnapshotOptions};
-use ortelia_presentation::MainWindowViewModel;
+use ortelia_presentation::{AppState, Intent, TableIntent};
 
 /// Size of every snapshot, in points (and in pixels, at scale 1).
 const SNAPSHOT_SIZE: egui::Vec2 = egui::vec2(640.0, 400.0);
@@ -38,20 +38,39 @@ fn snapshot_harness<State>() -> HarnessBuilder<State> {
 fn main_window() {
     // The whole application logs "main window shown": see `APP_TESTS`.
     let _lock = lock_app_tests();
-    let mut harness = snapshot_harness().build_eframe(|_cc| OrteliaApp::new(AppState::new()));
+    let mut harness = snapshot_harness().build_eframe(|_cc| OrteliaApp::new(directory()));
     harness.run();
     // Records the result; the harness panics when dropped if the image does not match.
     harness.snapshot("main_window");
 }
 
-/// Proves that the comparison is not empty: a tolerance too wide or a blank render would let
-/// a different heading pass.
+/// The dialog of an application that could not be opened, with two errors fixed here (not
+/// those of a real file: the image does not change with the messages of the lower layers).
 #[test]
 #[cfg_attr(
     not(target_os = "linux"),
     ignore = "snapshots are compared on Linux only, with lavapipe (docs/essais/captures-images.md)"
 )]
-fn different_heading_fails_the_comparison() {
+fn open_error() {
+    let _lock = lock_app_tests();
+    let errors = vec![
+        "app.json: unknown class `Personne` in `presentations`".to_owned(),
+        "app.json: the window has no view".to_owned(),
+    ];
+    let mut harness =
+        snapshot_harness().build_eframe(|_cc| OrteliaApp::new(AppState::with_open_errors(errors)));
+    harness.run();
+    harness.snapshot("open_error");
+}
+
+/// Proves that the comparison is not empty: a tolerance too wide or a blank render would let
+/// a different table pass.
+#[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "snapshots are compared on Linux only, with lavapipe (docs/essais/captures-images.md)"
+)]
+fn different_table_fails_the_comparison() {
     // In update mode (the values egui_kittest reads as such), it would replace the temporary
     // reference and return `Ok`: the test would prove nothing.
     let update_mode = std::env::var("UPDATE_SNAPSHOTS")
@@ -60,15 +79,14 @@ fn different_heading_fails_the_comparison() {
         return;
     }
 
-    // One harness, whose state is the view-model: the test changes the heading between renders.
-    // The view-model is written here, independent of the application version.
-    let vm = MainWindowViewModel {
-        title: "Ortelia".to_string(),
-        heading: "Ortelia".to_string(),
-    };
+    // One harness, whose state is the presentation: the test changes the filter between
+    // renders.
     let mut harness = snapshot_harness().build_ui_state(
-        |ui, vm: &mut MainWindowViewModel| draw_main_window(ui, vm),
-        vm,
+        |ui, state: &mut AppState| {
+            state.prepare();
+            draw_main_window(ui, state);
+        },
+        directory(),
     );
     let dir = tempfile::tempdir().expect("a temporary directory should be created");
     let options = SnapshotOptions::new().output_path(dir.path());
@@ -80,15 +98,17 @@ fn different_heading_fails_the_comparison() {
         .save(dir.path().join("main_window.png"))
         .expect("the temporary reference should be written");
 
-    // 2. The same heading again matches: the difference below comes from the text, not from
+    // 2. The same table again matches: the difference below comes from the table, not from
     //    the renderer.
     harness.run();
     let same = harness.render().expect("the main window should render");
     egui_kittest::try_image_snapshot_options(&same, "main_window", &options)
-        .expect("a second render of the same heading should match the reference");
+        .expect("a second render of the same table should match the reference");
 
-    // 3. Another heading does not match.
-    harness.state_mut().heading = "Ortelia 2".to_string();
+    // 3. The table filtered by `dup` does not match.
+    harness
+        .state_mut()
+        .dispatch(Intent::Table(TableIntent::SetFilter("dup".into())));
     harness.run();
     let other = harness.render().expect("the main window should render");
     match egui_kittest::try_image_snapshot_options(&other, "main_window", &options) {

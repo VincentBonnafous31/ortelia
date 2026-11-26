@@ -10,7 +10,7 @@ Ce fichier guide Claude Code (claude.ai/code) dans ce dépôt.
 
 **Priorités** : rapidité et faible consommation mémoire. Fichiers jusqu'à environ 500 Mo, tables jusqu'à 100 000 lignes.
 
-**État** : incrément 0 terminé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale, version Windows validée dans le bac à sable. Incrément 1 (application 1 « Annuaire des personnes ») terminé, en deux changements OpenSpec, tous deux archivés. Le premier, `stockage-dynamique` (essai S1 : métamodèle, Store, constructeur, lecteur JSON, mesures), est terminé et archivé (spécifications `metamodel`, `object-store`, `data-loading`, `storage-benchmark`) : le Store retenu est un bloc de valeurs typées par objet (`docs/essais/s1-stockage.md`). Le second, `modele-et-donnees` (spécifications `change-tracking`, `app-config`, `app-context`, `config-schemas`), apporte `app.json` (format 0.3, `ortelia-config`), Document avec révision et journal des changements, fragments greffés sur une branche, erreurs rassemblées et diagnostics, ouverture d'une application (`AppContext::open`, `ortelia-service`), JSON Schema des fichiers de configuration (`schemas/`). Incrément 2 (vue avec une table) en cours : le premier changement, `captures-images`, est terminé et archivé (spécification `ui-snapshots`, delta de `continuous-integration`) ; il retient lavapipe sous Linux pour les captures d'images (`docs/essais/captures-images.md`). Suivront `vue-table` et `etat-de-session`.
+**État** : incrément 0 terminé (changement OpenSpec `socle-workspace`) : workspace Cargo en couches, crates presque vides, fenêtre principale minimale, version Windows validée dans le bac à sable. Incrément 1 (application 1 « Annuaire des personnes ») terminé, en deux changements OpenSpec, tous deux archivés. Le premier, `stockage-dynamique` (essai S1 : métamodèle, Store, constructeur, lecteur JSON, mesures), est terminé et archivé (spécifications `metamodel`, `object-store`, `data-loading`, `storage-benchmark`) : le Store retenu est un bloc de valeurs typées par objet (`docs/essais/s1-stockage.md`). Le second, `modele-et-donnees` (spécifications `change-tracking`, `app-config`, `app-context`, `config-schemas`), apporte `app.json` (format 0.3, `ortelia-config`), Document avec révision et journal des changements, fragments greffés sur une branche, erreurs rassemblées et diagnostics, ouverture d'une application (`AppContext::open`, `ortelia-service`), JSON Schema des fichiers de configuration (`schemas/`). Incrément 2 (vue avec une table) en cours : le premier changement, `captures-images`, est terminé et archivé (spécification `ui-snapshots`, delta de `continuous-integration`) ; il retient lavapipe sous Linux pour les captures d'images (`docs/essais/captures-images.md`). Le deuxième, `vue-table`, est réalisé (non archivé) : `app.json` au format 0.4 (langues, libellés, présentations, fenêtre), table de l'annuaire (tri, filtre, colonnes, formats), boîtes d'erreur, barre des avertissements, `ortelia [chemin]`. Suivra `etat-de-session`.
 
 ## Documents
 
@@ -20,7 +20,7 @@ Ce fichier guide Claude Code (claude.ai/code) dans ce dépôt.
 | `docs/feuille-de-route-annuaire.md` | Application 1 « Annuaire des personnes » : incréments 1 à 6 |
 | `docs/feuille-de-route-editeur-modeles.md` | Application 2 « Éditeur de modèles » : incréments 7 et 8 |
 | `docs/architecture-couches.md` | Couches, couche de présentation sans dépendance UI, interfaces egui / GPUI interchangeables (D25–D27) ; lecture des données : lecteur de format, correspondance, constructeur, fragment greffé sur sa branche (D28–D30) ; Document seul à modifier le Store (D31) ; racine et sources de `app.json` (D32) |
-| `examples/annuaire/` | Application 1 : `app.json` (format 0.3 : modèle, racine `Racine`, source `personnes` de cible `/annuaire/personnes`), `annuaire.model.json`, `personnes.json` |
+| `examples/annuaire/` | Application 1 : `app.json` (format 0.4 : modèle, langues `fr` et `en`, libellés, racine `Racine`, source `personnes` de cible `/annuaire/personnes`, présentation de `Personne`, fenêtre avec la vue table), `annuaire.model.json`, `personnes.json` (10 personnes) |
 | `schemas/` | JSON Schema (draft 7) de `app.json` et des `*.model.json`, générés par `cargo xtask gen-schemas` ; les exemples y renvoient par leur clé `$schema` |
 | `examples/model-editor/metamodel.model.json` | Ébauche du métamodèle décrit avec lui-même (application 2) ; ne compile pas encore (attribut multivalué `literals`) |
 | `docs/essais/s1-stockage.md` | Essai S1 : conditions, mesures des deux Stores comparés, analyse, seuils et choix du Store |
@@ -58,6 +58,26 @@ schemas/                JSON Schema générés (versionnés)
 - `cargo xtask gen-schemas --check` compare sans écrire : code 1 en citant le fichier périmé, 0 sinon. La CI (Linux) et `tools/check.sh` le lancent.
 - Les dérivations `JsonSchema` sont derrière la feature `json-schema` de `ortelia-model` et `ortelia-config`, que seul `xtask` active : l'exécutable est compilé sans schemars (`cargo tree -p ortelia -i schemars` ne le trouve pas).
 - Les commentaires de doc (`///`) des types de fichiers deviennent les descriptions des schémas, montrées par l'éditeur : les écrire pour l'utilisateur, et mettre les détails d'implémentation en commentaires `//`.
+
+## Lancer Ortelia
+
+```bash
+ortelia [chemin]
+```
+
+- `chemin` : un dossier qui contient un `app.json`, ou le fichier `app.json` lui-même ; sans argument, le `app.json` du dossier courant. `tools/launch.sh` (skill `/lancer`) ouvre `examples/annuaire` par défaut, et `tools/launch.sh -- <chemin>` une autre application (chemin relatif à la racine du dépôt).
+- Une application qui ne s'ouvre pas affiche ses erreurs dans une boîte (bouton « Quitter »), les écrit sur la sortie d'erreur et dans le journal, et le code de sortie est 1.
+
+## Annuaire généré et mesure de la table
+
+```bash
+cargo xtask gen-data --model annuaire --count 100000 --out ~/annuaire-100k
+cargo run --release -p ortelia-presentation --example table-bench -- ~/annuaire-100k
+```
+
+- `gen-data --model annuaire` écrit dans le dossier `--out` (créé au besoin) une application complète : `app.json` et `annuaire.model.json` recopiés de `examples/annuaire`, et `personnes.json` de `--count` personnes (noms accentués, particules, attributs facultatifs absents). `--seed` (1 par défaut) : mêmes options, mêmes fichiers.
+- `table-bench` ouvre l'application, puis mesure le tri initial, le tri par `nom`, la préparation du filtre et le filtre `dup`, dans un tableau Markdown. Toujours en release ; seuils de la spécification : tri et filtre sous 200 ms, préparation du filtre sous une seconde. `cargo test` exécute son test sur `examples/annuaire`.
+- Pour voir 50 000 personnes : `cargo xtask gen-data --model annuaire --count 50000 --out ~/annuaire-50k`, puis `tools/launch.sh --release -- ~/annuaire-50k`.
 
 ## Essai S1 : données générées et mesures
 
@@ -201,5 +221,5 @@ L'API d'egui change à chaque version mineure : vérifier dans Context7 ou dans 
 - Panneaux : `egui::Panel::left(..)` / `Panel::bottom(..)` puis `CentralPanel`, tous affichés avec `.show(ui, ..)`. `SidePanel`, `TopBottomPanel` et `show_inside` sont obsolètes.
 - Table : `egui_extras::TableBuilder`. `body.rows(..)` ne dessine que les lignes visibles (testé avec 50 000 lignes). egui mémorise les largeurs sous l'`id_salt` de la table et repart de `Column::initial` quand le nombre de colonnes change.
 - `DatePickerButton` travaille sur des `jiff::civil::Date` (pas chrono).
-- Les polices emoji et symboles (⏷, 📆…) ne sont plus incluses par défaut : activer la feature `monochrome_emoji_fonts` de la crate `egui`, sinon elles s'affichent en carrés vides sous Linux/WSL.
+- Les polices emoji et symboles (⏷, 📆…) ne sont plus incluses par défaut : activer la feature `monochrome_emoji_fonts` de la crate `egui`, sinon elles s'affichent en carrés vides sous Linux/WSL. Même avec elle, certains symboles manquent (`▲`, `▼`) et egui_kittest panique sur un glyphe absent : vérifier la police (`fc-query` sur les polices de `epaint_default_fonts`). Les indicateurs de tri sont `⏶` et `⏷`.
 - Décorations de fenêtre natives ; titre via `ViewportBuilder::with_title`.

@@ -4,7 +4,7 @@
 //! `deny_unknown_fields` rejects a misspelt key (serde_json's error then names the key, with its
 //! line and column), and `rename_all = "camelCase"` maps `lowerBound` to `lower_bound`.
 //!
-//! Some keys are read but not used yet (`defaultValue`, `unit`, `identifier`, `refersTo`,
+//! Some keys are read but not used yet (`defaultValue`, `identifier`, `refersTo`,
 //! `constraints`, and the restrictions of data types): a file valid today stays valid when they
 //! start to be used.
 //!
@@ -82,7 +82,7 @@ pub struct AttributeDef {
     /// Not used yet.
     #[serde(default)]
     pub default_value: Option<String>,
-    /// Not used yet.
+    /// The unit of the values (`m`, `kg`…), shown after the label in the headers of tables.
     #[serde(default)]
     pub unit: Option<String>,
     /// Not used yet.

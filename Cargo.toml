@@ -31,8 +31,12 @@ cargo_metadata = "0.23.1"
 dirs = "6.0.0"
 eframe = "0.37.0"
 egui = "0.37.0"
+egui_extras = { version = "0.37.0", default-features = false }
 egui_kittest = "0.37.0"
 fastrand = "2.5.0"
+# NFD decomposition of the folding of texts (sort and filter of tables). Already in Cargo.lock,
+# through another dependency; only its compiled data are needed.
+icu_normalizer = { version = "2.4.0", default-features = false, features = ["compiled_data"] }
 # Without the default features: no time zone database and no access to the system time zone.
 # Only civil dates and UTC instants are used.
 jiff = { version = "0.2.43", default-features = false, features = ["std"] }

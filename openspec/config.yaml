@@ -45,4 +45,4 @@ rules:
     - Donner les versions des bibliothèques utilisées, après vérification de leur API dans Context7.
   tasks:
     - Des tâches courtes ; chacune laisse le workspace compilable et les tests au vert.
-    - Terminer par /code-review sur le diff, /simplify, puis /verifier (tools/check.sh : format, clippy, tests, règle des couches, test de fumée).
+    - "Terminer par /code-review sur le diff, /simplify, puis /verifier (tools/check.sh : format, clippy, tests, règle des couches, test de fumée)."

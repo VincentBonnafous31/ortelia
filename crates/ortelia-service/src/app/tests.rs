@@ -53,10 +53,18 @@ fn app_json(model: &str, root: &str, sources: &[(&str, &str, &str)]) -> String {
             )
         })
         .collect();
+    // A window that shows a list of the model.
+    let data = match model {
+        "reseau.model.json" => "/stations",
+        "m.model.json" => "/a/b",
+        _ => "/annuaire/personnes",
+    };
     format!(
-        r#"{{ "formatVersion": "0.3", "id": "test", "name": "Test",
+        r#"{{ "formatVersion": "0.4", "id": "test", "name": "Test", "languages": ["fr"],
              "model": {{ "files": ["{model}"], "root": "{root}" }},
-             "sources": [ {} ] }}"#,
+             "sources": [ {} ],
+             "window": {{ "content": {{ "_type_": "View", "id": "v",
+                 "widget": {{ "_type_": "Table" }}, "data": "{data}" }} }} }}"#,
         sources.join(", ")
     )
 }
@@ -161,6 +169,8 @@ fn directory_opened() {
     };
     assert_eq!(diagnostic_count, 0);
     assert_eq!(context.app().id, "annuaire");
+    // Scenario "Annuaire sans avertissement de configuration".
+    assert!(context.warnings().is_empty(), "{:?}", context.warnings());
 }
 
 /// Scenario "Fichier de modèle introuvable".
@@ -203,7 +213,7 @@ fn error_in_app_json() {
     let _lock = lock();
     let model = example("annuaire/annuaire.model.json");
     for app in [
-        "{ \"formatVersion\": \"0.3\" ".to_owned(),
+        "{ \"formatVersion\": \"0.4\" ".to_owned(),
         app_json("annuaire.model.json", "Racinne", &[]),
     ] {
         let dir = folder(&[("app.json", &app), ("annuaire.model.json", &model)]);
@@ -211,6 +221,29 @@ fn error_in_app_json() {
         assert!(matches!(error, OpenError::App { .. }), "{error}");
         assert!(error.to_string().contains("app.json"), "{error}");
     }
+}
+
+/// Scenario "Ouverture avec avertissement": a label key that names nothing.
+#[test]
+fn opening_with_a_warning() {
+    let _lock = lock();
+    let app = example("annuaire/app.json").replacen(
+        r#""key": "Personne.notes""#,
+        r#""key": "Personne.nmo""#,
+        1,
+    );
+    let model = example("annuaire/annuaire.model.json");
+    let data = example("annuaire/personnes.json");
+    let dir = folder(&[
+        ("app.json", &app),
+        ("annuaire.model.json", &model),
+        ("personnes.json", &data),
+    ]);
+    let context = open(&dir);
+    assert_eq!(persons(&context).len(), 10);
+    let warnings: Vec<String> = context.warnings().iter().map(ToString::to_string).collect();
+    assert_eq!(warnings.len(), 1, "{warnings:?}");
+    assert!(warnings[0].contains("Personne.nmo"), "{warnings:?}");
 }
 
 // --- Root and skeleton ---

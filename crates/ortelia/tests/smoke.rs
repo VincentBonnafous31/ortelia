@@ -39,7 +39,11 @@ fn read_logs(dir: &Path) -> String {
 fn main_window_is_shown() {
     let temp = tempfile::tempdir().unwrap();
     let logs = temp.path().join("logs");
+    // The directory example: the window shows its table, and an error of the opening or of
+    // the drawing would be logged.
+    let annuaire = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/annuaire");
     let child = Command::new(env!("CARGO_BIN_EXE_ortelia"))
+        .arg(&annuaire)
         .env("ORTELIA_LOG_DIR", &logs)
         .env_remove("ORTELIA_LOG")
         .spawn()

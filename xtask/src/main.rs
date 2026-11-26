@@ -4,10 +4,13 @@
 //! - `check-layers`: checks the layer rule of the workspace (see `layers.rs`);
 //! - `coverage`: the test coverage of each crate, from a summary of cargo-llvm-cov (see
 //!   `coverage.rs`);
-//! - `gen-data`: writes a data file for the S1 storage trial (see `gen_data.rs`);
+//! - `gen-data`: writes a data file for the S1 storage trial (see `gen_data.rs`), or, with
+//!   `--model annuaire`, a directory application of a given number of persons (see
+//!   `gen_annuaire.rs`);
 //! - `gen-schemas`: writes the JSON Schemas of the configuration files (see `schemas.rs`).
 
 mod coverage;
+mod gen_annuaire;
 mod gen_data;
 mod layers;
 mod schemas;
@@ -26,7 +29,8 @@ tasks:
   check-layers   check the layer rule of the workspace
   coverage FILE  print the test coverage of each crate as a Markdown table, from the summary
                  written by `cargo llvm-cov report --json --summary-only --output-path FILE`
-  gen-data       write a data file for the S1 storage trial (see `cargo xtask gen-data --help`)
+  gen-data       write a data file for the S1 storage trial, or a directory application with
+                 --model annuaire (see `cargo xtask gen-data --help`)
   gen-schemas    write the JSON Schemas of app.json and of the model files in schemas/;
                  with --check, only check that they are up to date";
 
@@ -88,8 +92,11 @@ fn coverage(summary: &Path) -> ExitCode {
 
 fn gen_data(args: &[String]) -> ExitCode {
     if args.iter().any(|a| a == "--help" || a == "-h") {
-        println!("{}", gen_data::USAGE);
+        println!("{}\n\n{}", gen_data::USAGE, gen_annuaire::USAGE);
         return ExitCode::SUCCESS;
+    }
+    if args.iter().any(|a| a == "--model") {
+        return gen_annuaire(args);
     }
     let options = match gen_data::parse_args(args) {
         Ok(options) => options,
@@ -101,6 +108,31 @@ fn gen_data(args: &[String]) -> ExitCode {
     match gen_data::run(&options) {
         Ok(size) => {
             println!("gen-data: {} ({size} bytes)", options.out.display());
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!("error: cannot write {}: {error}", options.out.display());
+            ExitCode::FAILURE
+        }
+    }
+}
+
+fn gen_annuaire(args: &[String]) -> ExitCode {
+    let options = match gen_annuaire::parse_args(args) {
+        Ok(options) => options,
+        Err(message) => {
+            eprintln!("error: {message}\n\n{}", gen_annuaire::USAGE);
+            return ExitCode::from(2);
+        }
+    };
+    match gen_annuaire::run(&options) {
+        Ok(size) => {
+            let persons = gen_annuaire::persons_file(&options.out);
+            println!(
+                "gen-data: {} ({} persons, {size} bytes)",
+                persons.display(),
+                options.count
+            );
             ExitCode::SUCCESS
         }
         Err(error) => {

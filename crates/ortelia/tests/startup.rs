@@ -36,7 +36,13 @@ fn version_writes_no_log() {
 mod without_display {
     use super::*;
     use std::fs;
-    use std::path::Path;
+    use std::path::{Path, PathBuf};
+
+    /// The directory application, which opens: a failure of the tests below is the one of the
+    /// window.
+    fn annuaire() -> PathBuf {
+        Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples/annuaire")
+    }
 
     /// Content of all the files of a log directory.
     fn read_logs(dir: &Path) -> String {
@@ -56,10 +62,17 @@ mod without_display {
         command
     }
 
+    /// The directory application, without a display.
+    fn annuaire_without_display() -> Command {
+        let mut command = ortelia_without_display();
+        command.arg(annuaire());
+        command
+    }
+
     #[test]
     fn fails_with_code_1_and_a_message() {
         let temp = tempfile::tempdir().unwrap();
-        let output = ortelia_without_display()
+        let output = annuaire_without_display()
             .env("ORTELIA_LOG_DIR", temp.path())
             .output()
             .unwrap();
@@ -72,7 +85,7 @@ mod without_display {
     fn log_dir_is_created_with_startup_line_and_error() {
         let temp = tempfile::tempdir().unwrap();
         let logs = temp.path().join("not").join("yet");
-        let output = ortelia_without_display()
+        let output = annuaire_without_display()
             .env("ORTELIA_LOG_DIR", &logs)
             .output()
             .unwrap();
@@ -97,7 +110,7 @@ mod without_display {
     #[test]
     fn default_log_dir_follows_xdg_state_home() {
         let temp = tempfile::tempdir().unwrap();
-        let output = ortelia_without_display()
+        let output = annuaire_without_display()
             .env("XDG_STATE_HOME", temp.path())
             .output()
             .unwrap();
@@ -112,7 +125,7 @@ mod without_display {
         let file = temp.path().join("regular-file");
         fs::write(&file, "").unwrap();
         let logs = file.join("logs");
-        let output = ortelia_without_display()
+        let output = annuaire_without_display()
             .env("ORTELIA_LOG_DIR", &logs)
             .output()
             .unwrap();
@@ -122,5 +135,41 @@ mod without_display {
         // The startup went on until the window: same failure as without the warning.
         assert!(stderr.contains("cannot open the main window"), "{stderr}");
         assert_eq!(output.status.code(), Some(1));
+    }
+
+    /// Scenario "Code de sortie": a folder without `app.json`.
+    #[test]
+    fn application_that_does_not_open_gives_code_1() {
+        let temp = tempfile::tempdir().unwrap();
+        let output = ortelia_without_display()
+            .arg(temp.path())
+            .env("ORTELIA_LOG_DIR", temp.path().join("logs"))
+            .output()
+            .unwrap();
+        assert_eq!(output.status.code(), Some(1));
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let expected = temp.path().join("app.json").display().to_string();
+        assert!(stderr.contains(&expected), "{stderr}");
+        let log = read_logs(&temp.path().join("logs"));
+        assert!(
+            log.lines()
+                .any(|line| line.contains("ERROR") && line.contains(&expected)),
+            "{log}"
+        );
+    }
+
+    /// Scenario "Sans argument": from the folder of the directory, the application opens
+    /// (only the window fails, without a display).
+    #[test]
+    fn without_argument_the_app_json_of_the_current_folder() {
+        let temp = tempfile::tempdir().unwrap();
+        let output = ortelia_without_display()
+            .current_dir(annuaire())
+            .env("ORTELIA_LOG_DIR", temp.path())
+            .output()
+            .unwrap();
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(!stderr.contains("app.json"), "{stderr}");
+        assert!(stderr.contains("cannot open the main window"), "{stderr}");
     }
 }

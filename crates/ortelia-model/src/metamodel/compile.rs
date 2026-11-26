@@ -288,6 +288,7 @@ impl Context<'_, '_> {
                 },
                 attr_type,
                 required: attr.lower_bound == 1,
+                unit: attr.unit.clone(),
             });
         }
 

@@ -107,6 +107,7 @@ pub struct Attribute {
     id: AttrId,
     attr_type: AttrType,
     required: bool,
+    unit: Option<String>,
 }
 
 impl Attribute {
@@ -125,6 +126,11 @@ impl Attribute {
     /// `true` if the attribute must have a value (`lowerBound` 1).
     pub fn is_required(&self) -> bool {
         self.required
+    }
+
+    /// The unit of the values (`m`, `kg`…), if the model declares one.
+    pub fn unit(&self) -> Option<&str> {
+        self.unit.as_deref()
     }
 }
 
@@ -326,6 +332,12 @@ impl Model {
 
     pub fn enum_type(&self, id: EnumId) -> &EnumType {
         &self.enums[usize::from(id.0)]
+    }
+
+    /// Finds an enum by its name. A linear search: for checks done once, at the opening.
+    pub fn enum_id(&self, name: &str) -> Option<EnumId> {
+        let index = self.enums.iter().position(|e| e.name == name)?;
+        Some(EnumId(u16::try_from(index).ok()?))
     }
 
     pub fn attribute(&self, id: AttrId) -> &Attribute {

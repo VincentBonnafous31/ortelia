@@ -23,6 +23,20 @@
       "description": "Its name, for the user.",
       "type": "string"
     },
+    "languages": {
+      "description": "The languages of the application, as codes (`fr`, `en`). The first one is the current\nlanguage.",
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "labels": {
+      "description": "The labels of the classes, attributes and enum literals, one group per language.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/LabelGroup"
+      }
+    },
     "model": {
       "$ref": "#/definitions/ModelSection"
     },
@@ -31,6 +45,21 @@
       "items": {
         "$ref": "#/definitions/SourceDef"
       }
+    },
+    "presentations": {
+      "description": "How the objects of a class are presented: its table.",
+      "type": "array",
+      "items": {
+        "$ref": "#/definitions/PresentationDef"
+      }
+    },
+    "window": {
+      "description": "The main window.",
+      "allOf": [
+        {
+          "$ref": "#/definitions/WindowDef"
+        }
+      ]
     }
   },
   "additionalProperties": false,
@@ -38,9 +67,49 @@
     "formatVersion",
     "id",
     "name",
-    "model"
+    "languages",
+    "model",
+    "window"
   ],
   "definitions": {
+    "LabelGroup": {
+      "description": "The labels of one language.",
+      "type": "object",
+      "properties": {
+        "lang": {
+          "description": "The language, one of `languages`.",
+          "type": "string"
+        },
+        "entries": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/LabelEntry"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "lang",
+        "entries"
+      ]
+    },
+    "LabelEntry": {
+      "description": "A label: the text shown for a class (`Personne`), an attribute (`Personne.nom`) or an enum\nliteral (`SituationFamiliale.MARIE`).",
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "text": {
+          "type": "string"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "text"
+      ]
+    },
     "ModelSection": {
       "description": "The model of the application.",
       "type": "object",
@@ -95,6 +164,232 @@
       "type": "string",
       "enum": [
         "json"
+      ]
+    },
+    "PresentationDef": {
+      "description": "The presentation of a class: how its objects are shown.",
+      "type": "object",
+      "properties": {
+        "class": {
+          "description": "The name of the class. A subclass without presentation takes the one of its nearest\nsuper class.",
+          "type": "string"
+        },
+        "table": {
+          "description": "The table of the objects of the class. Without it, the columns are the attributes of the\nclass, in the order of the model.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TableDef"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "class"
+      ]
+    },
+    "TableDef": {
+      "description": "The table of a class: its columns and its initial sort.",
+      "type": "object",
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/ColumnDef"
+          }
+        },
+        "sort": {
+          "description": "The initial sort: columns of the table, the first one first.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/SortDef"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "columns"
+      ]
+    },
+    "ColumnDef": {
+      "description": "A column of a table.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "The name of an attribute of the class, inherited ones included.",
+          "type": "string"
+        },
+        "width": {
+          "description": "The width of the column, in points (20 to 2000). By default, a width for its type.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "align": {
+          "description": "By default, numbers are aligned to the right, booleans and dates centred, and texts to\nthe left.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Align"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "format": {
+          "description": "For a date or a date-time, an LDML pattern: `dd/MM/yyyy`, `d MMMM yyyy HH:mm`…",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ]
+    },
+    "Align": {
+      "description": "The alignment of the values of a column.",
+      "type": "string",
+      "enum": [
+        "left",
+        "center",
+        "right"
+      ]
+    },
+    "SortDef": {
+      "description": "A criterion of the initial sort.",
+      "type": "object",
+      "properties": {
+        "path": {
+          "description": "The path of a column of the table.",
+          "type": "string"
+        },
+        "order": {
+          "$ref": "#/definitions/SortOrder"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "path"
+      ]
+    },
+    "SortOrder": {
+      "description": "The direction of a sort.",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "desc"
+          ]
+        },
+        {
+          "description": "Ascending, the default.",
+          "type": "string",
+          "const": "asc"
+        }
+      ]
+    },
+    "WindowDef": {
+      "description": "The main window.",
+      "type": "object",
+      "properties": {
+        "title": {
+          "description": "The title of the window; by default, the name of the application.",
+          "type": [
+            "string",
+            "null"
+          ],
+          "default": null
+        },
+        "width": {
+          "description": "The initial width, in points (200 to 10000).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "height": {
+          "description": "The initial height, in points (200 to 10000).",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "content": {
+          "$ref": "#/definitions/Content"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "content"
+      ]
+    },
+    "Content": {
+      "description": "The content of a window, chosen by `_type_`.",
+      "oneOf": [
+        {
+          "description": "A view: a widget that shows the data of a path.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "View"
+            },
+            "id": {
+              "description": "The identifier of the view.",
+              "type": "string"
+            },
+            "widget": {
+              "$ref": "#/definitions/Widget"
+            },
+            "data": {
+              "description": "The data shown: `/r1/…/rn`, containment references from the root, the last one a list.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_",
+            "id",
+            "widget",
+            "data"
+          ]
+        }
+      ]
+    },
+    "Widget": {
+      "description": "The widget of a view, chosen by `_type_`.",
+      "oneOf": [
+        {
+          "description": "A table of the objects of a list, presented as their class says.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "Table"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_"
+          ]
+        }
       ]
     }
   }
