@@ -15,7 +15,11 @@ La commande `cargo xtask gen-schemas` SHALL écrire `schemas/app.schema.json` et
 
 #### Scenario: Clés du schéma de `app.json`
 - **WHEN** on lit `schemas/app.schema.json`
-- **THEN** il décrit les clés `$schema`, `formatVersion`, `id`, `name`, `model` et `sources`, et une source y a les clés obligatoires `id`, `format`, `file` et `target`
+- **THEN** il décrit les clés `$schema`, `formatVersion`, `id`, `name`, `languages`, `labels`, `model`, `sources`, `presentations` et `window`, et une source y a les clés obligatoires `id`, `format`, `file` et `target`
+
+#### Scenario: Contenu polymorphe de la fenêtre
+- **WHEN** on lit `schemas/app.schema.json`
+- **THEN** le contenu de la fenêtre y est décrit comme un objet dont `_type_` vaut `View`, et son widget comme un objet dont `_type_` vaut `Table`
 
 #### Scenario: Génération reproductible
 - **WHEN** on lance deux fois `cargo xtask gen-schemas` sans changer le code

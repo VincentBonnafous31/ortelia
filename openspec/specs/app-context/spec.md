@@ -71,3 +71,14 @@ La journalisation de l'ouverture SHALL donner l'application, les fichiers lus, l
 #### Scenario: Valeur fautive non journalisée
 - **WHEN** on ouvre une application dont une source contient la valeur `"haute"` pour un attribut `Int`
 - **THEN** le journal signale l'échec de la source avec le chemin de la donnée, et ne contient nulle part le texte `haute`
+
+### Requirement: Avertissements de la configuration
+L'ouverture SHALL rapporter, avec l'application ouverte, les avertissements de la vérification de `app.json` contre le modèle, comme les clés de libellés qui ne désignent rien. Ces avertissements MUST NOT empêcher l'ouverture.
+
+#### Scenario: Ouverture avec avertissement
+- **WHEN** on ouvre une application dont un libellé a la clé `Personne.nmo`
+- **THEN** l'ouverture réussit, les sources sont chargées, et l'application ouverte porte un avertissement qui cite `Personne.nmo`
+
+#### Scenario: Annuaire sans avertissement de configuration
+- **WHEN** on ouvre `examples/annuaire/app.json`
+- **THEN** l'application ouverte ne porte aucun avertissement de configuration

@@ -119,9 +119,15 @@ Contenu :
 - Menu de configuration avec le choix de la langue.
 - Langue au démarrage : celle choisie par l'utilisateur, sinon celle du système si l'application la propose (`languages` de `app.json`), sinon la première de la liste.
 - Libellés FR/EN : ceux de `app.json`, déjà lus depuis l'incrément 2, et ceux d'Ortelia (menus, messages d'erreur), avec un mécanisme de traduction à choisir pour ces derniers.
+- Internationaliser **tous** les messages d'Ortelia, en particulier les erreurs à l'ouverture d'une application. À l'incrément 2, l'interface mélange les deux langues :
+  - les textes de l'interface (« Filtrer », « Quitter », barre des avertissements…) sont des constantes en français de `ortelia-presentation` ;
+  - les erreurs et diagnostics (de `app.json`, du modèle, des sources) sont des phrases en anglais, écrites par l'implémentation de `Display` dans `ortelia-config`, `ortelia-model` et `ortelia-service`, puis affichées telles quelles dans la boîte d'erreur ;
+  - certains messages viennent du système ou des bibliothèques (`No such file or directory (os error 2)`, erreurs de syntaxe de serde_json).
+
+  Piste : les couches basses rendent des erreurs structurées (un genre et ses paramètres : chemin, ligne, nom de classe…), et la présentation en fait le texte dans la langue choisie, comme pour les libellés. Le journal reste en anglais.
 - La langue choisie est enregistrée dans l'état de session.
 
-**Fini quand** : l'application s'affiche en français ou en anglais, et tous les libellés affichés sont traduits.
+**Fini quand** : l'application s'affiche en français ou en anglais, et tous les libellés et messages affichés sont traduits, erreurs à l'ouverture comprises.
 
 ---
 
