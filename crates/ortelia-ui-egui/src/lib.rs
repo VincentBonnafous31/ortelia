@@ -58,7 +58,7 @@ impl eframe::App for OrteliaApp {
 fn draw_main_window(ui: &mut egui::Ui, vm: &MainWindowViewModel) {
     egui::CentralPanel::default().show(ui, |ui| {
         ui.centered_and_justified(|ui| {
-            ui.label(&vm.heading);
+            ui.heading(&vm.heading);
         });
     });
 }
