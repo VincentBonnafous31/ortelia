@@ -27,6 +27,7 @@ fn help_lists_the_options() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("--version"), "{stdout}");
     assert!(stdout.contains("--help"), "{stdout}");
+    assert!(stdout.contains("PATH"), "{stdout}");
 }
 
 #[test]
@@ -35,5 +36,15 @@ fn unknown_argument_is_refused() {
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.contains("--frobnicate"), "{stderr}");
+    assert!(stderr.contains("--help"), "{stderr}");
+}
+
+/// Scenario "Deux chemins": refused before any window.
+#[test]
+fn two_paths_are_refused() {
+    let output = ortelia(&["examples/annuaire", "autre"]);
+    assert_eq!(output.status.code(), Some(2));
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("autre"), "{stderr}");
     assert!(stderr.contains("--help"), "{stderr}");
 }

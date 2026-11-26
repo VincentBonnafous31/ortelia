@@ -1,14 +1,17 @@
-//! The Ortelia executable: parses the command line, sets up logging and opens the main window.
+//! The Ortelia executable: parses the command line, sets up logging, opens the application
+//! and its main window.
 
 mod cli;
 mod logging;
 
+use std::path::Path;
 use std::process::ExitCode;
 
 use cli::Command;
 use ortelia_presentation::AppState;
 
-/// Exit code when the main window cannot be opened.
+/// Exit code when the main window cannot be opened (also the one of an application that does
+/// not open, given by the presentation).
 const EXIT_WINDOW_FAILED: u8 = 1;
 /// Exit code of a command line error (like most Unix tools).
 const EXIT_USAGE: u8 = 2;
@@ -34,12 +37,12 @@ fn main() -> ExitCode {
             print!("{}", cli::HELP);
             ExitCode::SUCCESS
         }
-        Command::Run => run(),
+        Command::Run { path } => run(path.as_deref()),
     }
 }
 
-/// Opens the main window and returns when it is closed.
-fn run() -> ExitCode {
+/// Opens the application at `path`, then its window; returns when the window is closed.
+fn run(path: Option<&Path>) -> ExitCode {
     // 2. Logging. The guard flushes the log when dropped, at the end of this function: it
     //    must be bound to a named variable (`_log_guard`), not to `_`.
     let _log_guard = logging::init(
@@ -55,13 +58,23 @@ fn run() -> ExitCode {
         std::env::consts::ARCH
     );
 
-    // 5. Main window.
-    let state = AppState::new();
+    // 5. The application. One that does not open still gets its window, with the dialog of
+    //    its errors; the errors also go to the standard error and to the log.
+    let file = cli::app_file(path);
+    let state = AppState::open(&file);
+    for error in state.open_errors() {
+        eprintln!("ortelia: {error}");
+        tracing::error!("cannot open the application: {error}");
+    }
+    // Known before the window takes the state: it does not depend on how the window closes.
+    let exit_code = state.exit_code();
+
+    // 6. Main window.
     match ortelia_ui_egui::run(state) {
         Ok(()) => {
-            // 6. Shutdown line.
+            // 7. Shutdown line.
             tracing::info!("Ortelia stopped");
-            ExitCode::SUCCESS
+            ExitCode::from(exit_code)
         }
         Err(error) => {
             eprintln!("ortelia: cannot open the main window: {error}");

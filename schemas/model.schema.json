@@ -136,7 +136,7 @@
           "default": null
         },
         "unit": {
-          "description": "Not used yet.",
+          "description": "The unit of the values (`m`, `kg`…), shown after the label in the headers of tables.",
           "type": [
             "string",
             "null"

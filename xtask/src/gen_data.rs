@@ -112,13 +112,7 @@ pub fn run(options: &Options) -> io::Result<u64> {
 /// Writes a generated file to `out`, and returns its size in bytes.
 pub fn generate<W: Write>(out: W, options: &Options) -> io::Result<u64> {
     let mut generator = Generator {
-        json: Json {
-            out: CountingWriter {
-                inner: out,
-                count: 0,
-            },
-            frames: Vec::new(),
-        },
+        json: Json::new(out),
         rng: fastrand::Rng::with_seed(options.seed),
         text: options.text,
         late_type: options.late_type,
@@ -132,9 +126,9 @@ pub fn generate<W: Write>(out: W, options: &Options) -> io::Result<u64> {
 }
 
 /// A writer that counts the bytes written through it.
-struct CountingWriter<W> {
+pub(crate) struct CountingWriter<W> {
     inner: W,
-    count: u64,
+    pub(crate) count: u64,
 }
 
 impl<W: Write> Write for CountingWriter<W> {
@@ -158,13 +152,24 @@ struct Frame {
 }
 
 /// A minimal compact JSON writer, which knows where commas go.
-struct Json<W> {
-    out: CountingWriter<W>,
+pub(crate) struct Json<W> {
+    pub(crate) out: CountingWriter<W>,
     frames: Vec<Frame>,
 }
 
 impl<W: Write> Json<W> {
-    fn open(&mut self, bracket: &[u8]) -> io::Result<()> {
+    /// A writer of JSON to `out`.
+    pub(crate) fn new(out: W) -> Json<W> {
+        Json {
+            out: CountingWriter {
+                inner: out,
+                count: 0,
+            },
+            frames: Vec::new(),
+        }
+    }
+
+    pub(crate) fn open(&mut self, bracket: &[u8]) -> io::Result<()> {
         self.out.write_all(bracket)?;
         self.frames.push(Frame {
             empty: true,
@@ -173,7 +178,7 @@ impl<W: Write> Json<W> {
         Ok(())
     }
 
-    fn close(&mut self, bracket: &[u8]) -> io::Result<()> {
+    pub(crate) fn close(&mut self, bracket: &[u8]) -> io::Result<()> {
         let frame = self.frames.pop().expect("open frame");
         if let Some(class) = frame.late_type {
             // An object with a single attribute: its `_type_` comes last.
@@ -184,7 +189,7 @@ impl<W: Write> Json<W> {
     }
 
     /// Writes the comma that separates this item from the previous one, if needed.
-    fn separator(&mut self) -> io::Result<()> {
+    pub(crate) fn separator(&mut self) -> io::Result<()> {
         let frame = self.frames.last_mut().expect("open frame");
         if frame.empty {
             frame.empty = false;
@@ -200,7 +205,7 @@ impl<W: Write> Json<W> {
     }
 
     /// Writes `"key":`, before its value.
-    fn key(&mut self, key: &str) -> io::Result<()> {
+    pub(crate) fn key(&mut self, key: &str) -> io::Result<()> {
         self.separator()?;
         write!(self.out, "\"{key}\":")
     }
@@ -223,16 +228,16 @@ impl<W: Write> Json<W> {
     }
 
     /// Writes a number (or any value whose `Display` is valid JSON).
-    fn raw(&mut self, value: impl std::fmt::Display) -> io::Result<()> {
+    pub(crate) fn raw(&mut self, value: impl std::fmt::Display) -> io::Result<()> {
         write!(self.out, "{value}")
     }
 
-    fn field_str(&mut self, key: &str, value: &str) -> io::Result<()> {
+    pub(crate) fn field_str(&mut self, key: &str, value: &str) -> io::Result<()> {
         self.key(key)?;
         self.string(value)
     }
 
-    fn field_raw(&mut self, key: &str, value: impl std::fmt::Display) -> io::Result<()> {
+    pub(crate) fn field_raw(&mut self, key: &str, value: impl std::fmt::Display) -> io::Result<()> {
         self.key(key)?;
         self.raw(value)
     }
@@ -715,22 +720,15 @@ impl<W: Write> Generator<W> {
     }
 
     fn pick<T: Copy>(&mut self, items: &[T]) -> T {
-        items[self.rng.usize(..items.len())]
+        pick(&mut self.rng, items)
     }
 
-    /// A number from `min` to `max`, rounded to `digits` decimals.
     fn decimal(&mut self, min: f64, max: f64, digits: i32) -> f64 {
-        round(min + (max - min) * self.rng.f64(), digits)
+        decimal(&mut self.rng, min, max, digits)
     }
 
-    /// A date from random components (days 1 to 28, always valid).
     fn date(&mut self, first_year: i32, last_year: i32) -> String {
-        let year = self.rng.i32(first_year..=last_year);
-        format!(
-            "{year:04}-{:02}-{:02}",
-            self.rng.u32(1..=12),
-            self.rng.u32(1..=28)
-        )
+        date(&mut self.rng, first_year, last_year)
     }
 
     /// An RFC 3339 instant from random components, with microseconds half of the time.
@@ -750,6 +748,24 @@ impl<W: Write> Generator<W> {
             format!("{date}T{h:02}:{m:02}:{s:02}Z")
         }
     }
+}
+
+// Random values, shared with the generator of the directory (`gen_annuaire`).
+
+/// An item of `items`.
+pub(crate) fn pick<T: Copy>(rng: &mut fastrand::Rng, items: &[T]) -> T {
+    items[rng.usize(..items.len())]
+}
+
+/// A number from `min` to `max`, rounded to `digits` decimals.
+pub(crate) fn decimal(rng: &mut fastrand::Rng, min: f64, max: f64, digits: i32) -> f64 {
+    round(min + (max - min) * rng.f64(), digits)
+}
+
+/// A date from random components (days 1 to 28, always valid).
+pub(crate) fn date(rng: &mut fastrand::Rng, first_year: i32, last_year: i32) -> String {
+    let year = rng.i32(first_year..=last_year);
+    format!("{year:04}-{:02}-{:02}", rng.u32(1..=12), rng.u32(1..=28))
 }
 
 /// Rounds to `digits` decimals. `Display` of the result is the shortest text that reads back

@@ -15,7 +15,7 @@ use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use ortelia_config::{AppFile, CheckedApp, CheckedSource, ConfigError};
+use ortelia_config::{AppFile, CheckedApp, CheckedSource, ConfigError, ConfigWarning};
 use ortelia_model::builder::{Diagnostic, LoadFailure};
 use ortelia_model::document::{Document, IntegrateError, Target};
 use ortelia_model::metamodel::{Model, ModelLoadError, NamedModelFile};
@@ -136,6 +136,10 @@ impl AppContext {
             .collect::<Result<Vec<_>, OpenError>>()?;
         let model = Arc::new(Model::load(&files).map_err(OpenError::Model)?);
         let app = app.check(&model).map_err(app_error)?;
+        for warning in &app.warnings {
+            // Names of the configuration (label keys), never data of the user.
+            warn!(file = %path.display(), "configuration: {warning}");
+        }
 
         let mut document =
             Document::new(model.clone(), app.root).expect("the root was checked to be concrete");
@@ -174,6 +178,12 @@ impl AppContext {
     /// The sources, in the order of `app.json`.
     pub fn sources(&self) -> &[SourceState] {
         &self.sources
+    }
+
+    /// The warnings of the check of `app.json`: odd but harmless, like a label key that names
+    /// nothing of the model.
+    pub fn warnings(&self) -> &[ConfigWarning] {
+        &self.app.warnings
     }
 }
 

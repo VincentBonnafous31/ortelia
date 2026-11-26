@@ -82,12 +82,13 @@ Contenu :
 - Création de la vue et de sa table à la lecture de `app.json`.
 - Liaison de la table aux données (`/annuaire/personnes`) et à la présentation de `Personne`.
 - Widget table : colonnes, tri multiple, filtre, largeur et ordre des colonnes, format des dates.
-- En-têtes de colonnes lus dans les libellés de `app.json`, par la recherche définitive (langue courante, puis l'autre langue, puis nom de l'attribut) mais avec une langue fixe : l'incrément 4 n'aura qu'à ajouter le choix.
+- En-têtes de colonnes lus dans les libellés de `app.json`, dans la première langue de `languages` : l'incrément 4 la prendra du système et ajoutera le choix. Un libellé manquant s'affiche `#clé#` (par exemple `#Personne.prenom#`), sans repli sur l'autre langue, et devient un avertissement.
+- **Fait** (changement `vue-table`) : `app.json` au format 0.4 (langues, libellés, présentations, fenêtre), table de l'annuaire (tri multiple au clic et au Maj+clic, filtre insensible aux accents et à la casse, compteur, largeur et ordre des colonnes, formats des nombres et des dates), boîtes d'erreur d'ouverture et de sources en échec, barre des avertissements, chemin de l'application en argument (`ortelia [chemin]`). Sur 100 000 personnes générées (`cargo xtask gen-data --model annuaire`, mesure `table-bench` en release dans WSL2) : tri initial 41 ms, tri par `nom` 8 ms, préparation du filtre 90 à 113 ms, filtre `dup` 2 à 4 ms. Reste l'état de session (changement `etat-de-session`).
 - État de session : la disposition de la table (largeurs, ordre, tri, filtre) et la taille de la fenêtre sont enregistrées à la fermeture et restaurées à l'ouverture, dans un fichier propre à l'utilisateur, rangé sous l'`id` de l'application. `app.json`, définition partagée et versionnée de l'application, n'est jamais modifié par l'utilisation.
 - Essai des tests par captures d'images (egui_kittest, features `wgpu` et `snapshot`) : choisir entre une machine macOS de la CI (vrai GPU) et le rendu logiciel lavapipe sous Linux. C'est le niveau 3 de la stratégie de tests de l'interface (`CLAUDE.md`) ; les niveaux 1, 2 et 4 existent depuis l'incrément 0. **Fait** (changement `captures-images`, compte rendu `docs/essais/captures-images.md`) :
   - les captures sont comparées sous Linux avec lavapipe, sur le runner `ubuntu-26.04` de la CI, contre des références produites dans WSL2, sans aucun pixel fautif ;
   - sous macOS (Metal) et Windows (WARP), l'anticrénelage du texte diffère, et une scène riche dépasse la tolérance ;
-  - la fenêtre principale a sa capture. Celle de la table viendra avec le changement `vue-table`.
+  - la fenêtre principale a sa capture, celle de la table de l'annuaire depuis le changement `vue-table`, ainsi que la boîte d'erreur d'ouverture.
 
 Si l'incrément s'avère trop gros, l'état de session peut en sortir pour former un incrément à part.
 

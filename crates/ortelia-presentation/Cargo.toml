@@ -8,7 +8,23 @@ repository.workspace = true
 publish.workspace = true
 
 [dependencies]
+ortelia-model.workspace = true
+ortelia-config.workspace = true
 ortelia-service.workspace = true
+icu_normalizer.workspace = true
+jiff.workspace = true
+tracing.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+tracing-subscriber.workspace = true
+
+# The measure of the table (see examples/table-bench.rs). `test = true`: `cargo test` also runs
+# its test.
+[[example]]
+name = "table-bench"
+path = "examples/table-bench.rs"
+test = true
 
 [lints]
 workspace = true

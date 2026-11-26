@@ -1,8 +1,52 @@
 {
   "$schema": "../../schemas/app.schema.json",
-  "formatVersion": "0.3",
+  "formatVersion": "0.4",
   "id": "annuaire",
   "name": "Annuaire des personnes",
+  "languages": ["fr", "en"],
+
+  "labels": [
+    {
+      "lang": "fr",
+      "entries": [
+        { "key": "Personne", "text": "Personne" },
+        { "key": "Personne.nom", "text": "Nom" },
+        { "key": "Personne.prenom", "text": "Prénom" },
+        { "key": "Personne.date_naissance", "text": "Né le" },
+        { "key": "Personne.nombre_enfants", "text": "Enfants" },
+        { "key": "Personne.taille", "text": "Taille" },
+        { "key": "Personne.contact_autorise", "text": "Contact" },
+        { "key": "Personne.situation", "text": "Situation" },
+        { "key": "Personne.inscription", "text": "Inscription" },
+        { "key": "Personne.notes", "text": "Notes" },
+        { "key": "SituationFamiliale.CELIBATAIRE", "text": "Célibataire" },
+        { "key": "SituationFamiliale.MARIE", "text": "Marié(e)" },
+        { "key": "SituationFamiliale.PACSE", "text": "Pacsé(e)" },
+        { "key": "SituationFamiliale.DIVORCE", "text": "Divorcé(e)" },
+        { "key": "SituationFamiliale.VEUF", "text": "Veuf, veuve" }
+      ]
+    },
+    {
+      "lang": "en",
+      "entries": [
+        { "key": "Personne", "text": "Person" },
+        { "key": "Personne.nom", "text": "Last name" },
+        { "key": "Personne.prenom", "text": "First name" },
+        { "key": "Personne.date_naissance", "text": "Born" },
+        { "key": "Personne.nombre_enfants", "text": "Children" },
+        { "key": "Personne.taille", "text": "Height" },
+        { "key": "Personne.contact_autorise", "text": "Contact" },
+        { "key": "Personne.situation", "text": "Status" },
+        { "key": "Personne.inscription", "text": "Registered" },
+        { "key": "Personne.notes", "text": "Notes" },
+        { "key": "SituationFamiliale.CELIBATAIRE", "text": "Single" },
+        { "key": "SituationFamiliale.MARIE", "text": "Married" },
+        { "key": "SituationFamiliale.PACSE", "text": "Civil union" },
+        { "key": "SituationFamiliale.DIVORCE", "text": "Divorced" },
+        { "key": "SituationFamiliale.VEUF", "text": "Widowed" }
+      ]
+    }
+  ],
 
   "model": {
     "files": ["annuaire.model.json"],
@@ -16,5 +60,36 @@
       "file": "personnes.json",
       "target": "/annuaire/personnes"
     }
-  ]
+  ],
+
+  "presentations": [
+    {
+      "class": "Personne",
+      "table": {
+        "columns": [
+          { "path": "nom", "width": 140 },
+          { "path": "prenom", "width": 120 },
+          { "path": "date_naissance", "format": "dd/MM/yyyy" },
+          { "path": "nombre_enfants" },
+          { "path": "taille" },
+          { "path": "contact_autorise" },
+          { "path": "situation" },
+          { "path": "inscription" }
+        ],
+        "sort": [ { "path": "nom" }, { "path": "prenom" } ]
+      }
+    }
+  ],
+
+  "window": {
+    "title": "Annuaire",
+    "width": 1000,
+    "height": 700,
+    "content": {
+      "_type_": "View",
+      "id": "personnes",
+      "widget": { "_type_": "Table" },
+      "data": "/annuaire/personnes"
+    }
+  }
 }

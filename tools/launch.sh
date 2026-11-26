@@ -3,9 +3,11 @@
 # the warnings and errors of that log and the exit code.
 #
 # Usage: tools/launch.sh [--release] [--check] [-- ORTELIA ARGUMENTS...]
+#   ORTELIA ARGUMENTS  default: examples/annuaire (paths are relative to the repository root)
 #   --release  optimized build (for performance checks)
 #   --check    automatic check instead of an interactive run: the smoke test
-#              (crates/ortelia/tests/smoke.rs) starts Ortelia and checks its log
+#              (crates/ortelia/tests/smoke.rs) starts Ortelia on examples/annuaire and
+#              checks its log
 #
 # Linux only: on Windows, run it in WSL2 (`wsl -- bash -l tools/launch.sh`); WSLg shows the
 # window on the Windows desktop.
@@ -49,13 +51,18 @@ done
 
 if ((check)); then
     if ((${#app_args[@]} > 0)); then
-        echo "launch.sh: the smoke test does not take Ortelia arguments yet" >&2
+        echo "launch.sh: the smoke test always opens examples/annuaire, without other arguments" >&2
         exit 2
     fi
     exec cargo test --locked -p ortelia "${build_flags[@]}" --test smoke -- --ignored
 fi
 
 cargo build --locked -p ortelia "${build_flags[@]}" || exit 1
+
+# Without arguments, the example of the repository.
+if ((${#app_args[@]} == 0)); then
+    app_args=(examples/annuaire)
+fi
 
 # A new log folder per run: the log then only holds the lines of this run.
 log_dir="$(mktemp -d -t ortelia-launch.XXXXXX)"

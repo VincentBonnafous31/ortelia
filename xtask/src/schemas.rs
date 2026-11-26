@@ -110,7 +110,18 @@ mod tests {
         let app = schema("app.schema.json");
         assert_eq!(
             keys(&app),
-            ["$schema", "formatVersion", "id", "name", "model", "sources"]
+            [
+                "$schema",
+                "formatVersion",
+                "id",
+                "name",
+                "languages",
+                "labels",
+                "model",
+                "sources",
+                "presentations",
+                "window"
+            ]
         );
         // Draft 7 puts the definitions under `definitions`.
         let source = &app["definitions"]["SourceDef"];
@@ -124,6 +135,32 @@ mod tests {
             app["definitions"]["SourceFormat"]["enum"],
             serde_json::json!(["json"])
         );
+    }
+
+    /// Scenario "Contenu polymorphe de la fenêtre": each variant is an object whose `_type_` is
+    /// a constant, without other keys than its own.
+    #[test]
+    fn polymorphic_content_of_the_window() {
+        let app = schema("app.schema.json");
+        let definitions = &app["definitions"];
+        assert_eq!(
+            definitions["WindowDef"]["properties"]["content"]["$ref"],
+            "#/definitions/Content"
+        );
+        let variants = |name: &str| definitions[name]["oneOf"].as_array().expect(name).clone();
+        let [view] = &variants("Content")[..] else {
+            panic!("one variant of Content")
+        };
+        assert_eq!(view["properties"]["_type_"]["const"], "View");
+        assert_eq!(keys(view), ["_type_", "id", "widget", "data"]);
+        assert_eq!(view["additionalProperties"], false);
+        assert_eq!(view["properties"]["widget"]["$ref"], "#/definitions/Widget");
+        let [table] = &variants("Widget")[..] else {
+            panic!("one variant of Widget")
+        };
+        assert_eq!(table["properties"]["_type_"]["const"], "Table");
+        assert_eq!(table["additionalProperties"], false);
+        assert_eq!(table["required"], serde_json::json!(["_type_"]));
     }
 
     /// The model schema follows the keys of the model file.
