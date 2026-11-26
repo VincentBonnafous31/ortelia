@@ -137,7 +137,7 @@ egui décrit chaque widget dans un arbre d'accessibilité (AccessKit) : l'interf
 | 2. egui_kittest sans rendu | l'interface affiche le view-model ; les clics et les touches produisent les bonnes intentions | tests de `ortelia-ui-egui` (`Harness::new_eframe`, `get_by_label`) |
 | 3. Captures d'images | le rendu réel, comparé à une image de référence | tests de capture de `ortelia-ui-egui` (`src/snapshot_tests.rs`, références dans `tests/snapshots/`), sous Linux avec lavapipe |
 | 4. Test de fumée de l'exécutable | la vraie fenêtre s'ouvre et dessine sans erreur | `crates/ortelia/tests/smoke.rs` |
-| 5. Test manuel | l'impression générale, la version Windows | WSLg (`/lancer`) ; bac à sable Windows (`/bac-a-sable`, ou `tools/sandbox/run-sandbox.ps1 <dossier de ortelia.exe>` ; vGPU désactivé car il fait planter wgpu) |
+| 5. Test manuel | l'impression générale, la version Windows | WSLg (`/lancer`) ; bac à sable Windows (`/bac-a-sable`, ou `powershell -ExecutionPolicy Bypass -File tools\sandbox\test-windows.ps1` : exécutable de la CI pour la branche courante, annuaire copié dans `tools/sandbox/app`, bilan du journal et du fichier d'état ; vGPU désactivé car il fait planter wgpu) |
 
 - Toute logique se teste dans `ortelia-presentation`.
 - Les tests de l'interface, les captures d'images et `table-bench` ouvrent les applications par `AppState::open`, sans état de session : ils ne dépendent jamais d'un `app.session.json` laissé dans `examples/` par `/lancer`, et n'y écrivent rien. Seul l'exécutable utilise `AppState::open_with_session` ; les tests de l'état de session travaillent sur une copie de l'annuaire dans un dossier temporaire, comme le test de fumée.

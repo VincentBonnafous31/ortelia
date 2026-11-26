@@ -7,7 +7,6 @@ reg add "HKLM\SYSTEM\CurrentControlSet\Control\CI\Policy" /v VerifiedAndReputabl
 rem CiTool waits for Enter: feed it one, there is no keyboard at logon.
 echo.| CiTool.exe -r
 
-rem Write the log into the shared folder so that it can be read from the host.
-set ORTELIA_LOG_DIR=C:\sandbox\logs
-set ORTELIA_LOG=debug
-start "" C:\ortelia\ortelia.exe
+rem Start Ortelia, and copy its launcher to the desktop to start it again.
+copy /y C:\sandbox\run-ortelia.cmd "%USERPROFILE%\Desktop\Ortelia.cmd"
+call C:\sandbox\run-ortelia.cmd

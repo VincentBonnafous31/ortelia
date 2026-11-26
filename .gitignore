@@ -13,9 +13,11 @@
 .DS_Store
 Thumbs.db
 
-# Windows Sandbox: generated configuration, downloaded executables and logs (see tools/sandbox/)
+# Windows Sandbox: generated configuration, downloaded executables, application copy and logs
+# (see tools/sandbox/)
 /tools/sandbox/sandbox.wsb
 /tools/sandbox/build/
+/tools/sandbox/app/
 /tools/sandbox/logs/
 
 # Snapshot tests (egui_kittest): images written next to the references after a failure or an
