@@ -11,7 +11,7 @@ La couche de présentation SHALL fournir l'arbre de disposition de la fenêtre p
 
 #### Scenario: Disposition de l'annuaire
 - **WHEN** la présentation est créée, sans interface et sans état de session, pour `examples/annuaire`
-- **THEN** l'arbre de disposition est le split horizontal `principal`, dont les enfants sont la vue table `personnes`, de part 0,65, puis la vue vide `proprietes`, de part 0,35
+- **THEN** l'arbre de disposition est le split horizontal `principal`, dont les enfants sont la vue table `personnes`, de part 0,65, puis la vue formulaire `proprietes`, de part 0,35
 
 #### Scenario: Splits imbriqués
 - **WHEN** la présentation est créée pour une application dont le contenu est un split horizontal de la vue `a` et d'un split vertical `droite` des vues `b` et `c`
@@ -55,15 +55,15 @@ La structure de la disposition SHALL être celle de `app.json` : l'interface SHA
 - **THEN** aucun onglet ni aucun bouton portant le nom d'une vue n'est présent
 
 #### Scenario: Vue glissée
-- **WHEN** dans un test sans écran, on glisse le pointeur depuis le milieu de la vue vide `proprietes` jusqu'au bord gauche de la fenêtre de l'annuaire
+- **WHEN** dans un test sans écran, on glisse le pointeur depuis le milieu de la vue formulaire `proprietes` jusqu'au bord gauche de la fenêtre de l'annuaire
 - **THEN** la table des personnes reste à gauche, avec la même largeur, et l'interface n'émet aucune intention de déplacement de séparation
 
 ### Requirement: Vue vide
 Une vue dont le widget est `Empty` SHALL occuper sa place dans la disposition sans rien dessiner : ni texte, ni widget.
 
 #### Scenario: Vue de droite de l'annuaire
-- **WHEN** dans un test sans écran, l'application de `examples/annuaire` dessine une image
-- **THEN** aucun texte ni widget n'est présent dans la moitié droite de la fenêtre, au-delà de la séparation
+- **WHEN** dans un test sans écran, une copie de l'annuaire dont la vue de droite `proprietes` est une vue vide, et non une vue formulaire, dessine une image
+- **THEN** aucun texte ni widget n'est présent dans la partie droite de la fenêtre, au-delà de la séparation
 
 ### Requirement: Séparation déplacée traduite en intention
 Quand l'utilisateur déplace une séparation, l'interface SHALL émettre une intention qui désigne le split par son identifiant et donne les nouvelles parts de ses enfants ; elle SHALL NOT en émettre tant qu'aucune séparation n'a été déplacée. Un double-clic sur une séparation SHALL partager également l'espace entre ses deux voisins, et émettre aussi cette intention.

@@ -19,11 +19,15 @@ La commande `cargo xtask gen-schemas` SHALL écrire `schemas/app.schema.json` et
 
 #### Scenario: Contenu polymorphe de la fenêtre
 - **WHEN** on lit `schemas/app.schema.json`
-- **THEN** le contenu de la fenêtre y est décrit comme un objet dont `_type_` vaut `View` ou `Split`, les enfants d'un split comme des contenus de ce même type, et le widget d'une vue comme un objet dont `_type_` vaut `Table` ou `Empty`
+- **THEN** le contenu de la fenêtre y est décrit comme un objet dont `_type_` vaut `View` ou `Split`, les enfants d'un split comme des contenus de ce même type, et le widget d'une vue comme un objet dont `_type_` vaut `Table`, `Empty` ou `Form`
 
 #### Scenario: Direction d'un split
 - **WHEN** on lit `schemas/app.schema.json`
 - **THEN** la direction d'un split n'y admet que les valeurs `horizontal` et `vertical`
+
+#### Scenario: Éléments polymorphes d'un formulaire
+- **WHEN** on lit `schemas/app.schema.json`
+- **THEN** la présentation d'une classe y a une clé `form`, dont les éléments sont décrits comme des objets dont `_type_` vaut `Field`, `Group`, `Separator` ou `Text`, les éléments d'un groupe comme des éléments de ce même type, et le widget d'un champ comme un objet dont `_type_` vaut `TextField`, `TextArea`, `NumberField`, `CheckBox`, `ComboBox`, `RadioGroup`, `DateField` ou `DateTimeField`
 
 #### Scenario: Génération reproductible
 - **WHEN** on lance deux fois `cargo xtask gen-schemas` sans changer le code
