@@ -103,7 +103,7 @@ mod tests {
     /// The labels of an `app.json` with the given groups.
     fn labels(model: &Model, groups: &str) -> Labels {
         let text = format!(
-            r#"{{ "formatVersion": "0.4", "id": "a", "name": "A", "languages": ["fr", "en"],
+            r#"{{ "formatVersion": "0.5", "id": "a", "name": "A", "languages": ["fr", "en"],
                  "labels": {groups},
                  "model": {{ "files": [], "root": "Racine" }},
                  "window": {{ "content": {{ "_type_": "View", "id": "v",

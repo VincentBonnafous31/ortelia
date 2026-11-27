@@ -33,6 +33,9 @@ eframe = "0.37.0"
 egui = "0.37.0"
 egui_extras = { version = "0.37.0", default-features = false }
 egui_kittest = "0.37.0"
+# Containers of the window (splits; tabs and drag and drop later). Without `serde`: the layout
+# is saved by the presentation, never as egui_tiles trees.
+egui_tiles = { version = "0.18.0", default-features = false }
 fastrand = "2.5.0"
 # NFD decomposition of the folding of texts (sort and filter of tables). Already in Cargo.lock,
 # through another dependency; only its compiled data are needed.

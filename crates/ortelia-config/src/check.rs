@@ -1,6 +1,6 @@
 //! The check of `app.json` against its model: the languages, the class of the root, the target
-//! of each source and the conflicts between sources, the presentations, the window and its view,
-//! and the labels. Every error is reported, not only the first one.
+//! of each source and the conflicts between sources, the presentations, the splits and views of
+//! the window, and the labels. Every error is reported, not only the first one.
 
 use std::collections::HashMap;
 
@@ -9,15 +9,15 @@ use ortelia_model::fragment::Shape;
 use ortelia_model::metamodel::{AttrId, AttrType, ClassId, Model, RefId};
 
 use crate::app::{
-    Align, AppFile, ColumnDef, ConfigError, ConfigWarning, Content, MAX_COLUMN_WIDTH,
+    Align, AppFile, ColumnDef, ConfigError, ConfigWarning, Content, Direction, MAX_COLUMN_WIDTH,
     MAX_WINDOW_SIZE, MIN_COLUMN_WIDTH, MIN_WINDOW_SIZE, PresentationDef, SortDef, SortOrder,
-    SourceDef, SourceFormat, ViewDef, WindowDef,
+    SourceDef, SourceFormat, SplitDef, ViewDef, Widget, WindowDef,
 };
 use crate::labels::{Labels, check_labels};
 use crate::pattern::DatePattern;
 
 /// An application checked against its model, with names resolved to model identifiers.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct CheckedApp {
     pub id: String,
     pub name: String,
@@ -103,24 +103,90 @@ pub struct CheckedColumn {
 }
 
 /// The main window, checked.
-#[derive(Debug, Clone, PartialEq, Eq)]
+// `PartialEq` without `Eq`: the weights of the splits are `f64`.
+#[derive(Debug, Clone, PartialEq)]
 pub struct CheckedWindow {
     /// The title of `window`, or the name of the application.
     pub title: String,
     /// In points.
     pub width: Option<u32>,
     pub height: Option<u32>,
-    pub view: CheckedView,
+    pub content: CheckedContent,
+}
+
+/// The content of the window, checked: a tree of splits whose leaves are views.
+#[derive(Debug, Clone, PartialEq)]
+pub enum CheckedContent {
+    Split(CheckedSplit),
+    View(CheckedView),
+}
+
+/// A split, checked.
+#[derive(Debug, Clone, PartialEq)]
+pub struct CheckedSplit {
+    pub id: String,
+    pub direction: Direction,
+    /// One per child, finite and strictly positive; 1 each when `app.json` gives none.
+    pub weights: Vec<f64>,
+    /// At least two.
+    pub children: Vec<CheckedContent>,
+}
+
+/// A view, checked.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CheckedView {
+    Table(CheckedTableView),
+    Empty { id: String },
 }
 
 /// A view that shows the objects of a list in a table.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct CheckedView {
+pub struct CheckedTableView {
     pub id: String,
     /// The containment references from the root, all single but the last, a list.
     pub data: Vec<RefId>,
     /// The class shown: the type of the list.
     pub class: ClassId,
+}
+
+impl CheckedContent {
+    /// The views of the tree, depth first, in the order of `app.json`.
+    pub fn views(&self) -> Vec<&CheckedView> {
+        let mut views = Vec::new();
+        self.collect_views(&mut views);
+        views
+    }
+
+    /// The table views of the tree, depth first, in the order of `app.json`.
+    pub fn table_views(&self) -> Vec<&CheckedTableView> {
+        self.views()
+            .into_iter()
+            .filter_map(|view| match view {
+                CheckedView::Table(table) => Some(table),
+                CheckedView::Empty { .. } => None,
+            })
+            .collect()
+    }
+
+    fn collect_views<'a>(&'a self, views: &mut Vec<&'a CheckedView>) {
+        match self {
+            CheckedContent::View(view) => views.push(view),
+            CheckedContent::Split(split) => {
+                for child in &split.children {
+                    child.collect_views(views);
+                }
+            }
+        }
+    }
+}
+
+impl CheckedView {
+    pub fn id(&self) -> &str {
+        match self {
+            CheckedView::Table(table) => &table.id,
+            CheckedView::Empty { id } => id,
+        }
+    }
 }
 
 impl AppFile {
@@ -358,28 +424,133 @@ fn check_window(
             errors.push(ConfigError::WindowSize { key, value });
         }
     }
-    let Content::View(view) = &window.content;
-    // Without a root, the data of the view cannot be followed.
-    let view = check_view(view, model, root?)
-        .map_err(|e| errors.push(e))
-        .ok()?;
+    let mut ids = Vec::new();
+    let content = check_content(&window.content, model, root, &mut ids, errors)?;
     Some(CheckedWindow {
         title: window.title.clone().unwrap_or_else(|| name.to_owned()),
         width: window.width,
         height: window.height,
-        view,
+        content,
     })
 }
 
-/// Checks the data of a table view: a path like a target, whose last reference is a list.
-fn check_view(view: &ViewDef, model: &Model, root: ClassId) -> Result<CheckedView, ConfigError> {
+/// Checks a content of the window and, for a split, its children, at any depth: the
+/// identifiers, seen so far in `ids`, are unique among the views and the splits. Every error is
+/// reported; `None` if one was found in this content.
+fn check_content(
+    content: &Content,
+    model: &Model,
+    root: Option<ClassId>,
+    ids: &mut Vec<String>,
+    errors: &mut Vec<ConfigError>,
+) -> Option<CheckedContent> {
+    let id = content.id();
+    // Reported once, at the second use.
+    if ids.iter().filter(|i| *i == id).count() == 1 {
+        errors.push(ConfigError::DuplicateContentId { id: id.to_owned() });
+    }
+    ids.push(id.to_owned());
+    match content {
+        Content::View(view) => check_view(view, model, root, errors).map(CheckedContent::View),
+        Content::Split(split) => {
+            check_split(split, model, root, ids, errors).map(CheckedContent::Split)
+        }
+    }
+}
+
+/// Checks a split: at least two children, and weights, if given, one per child, each finite
+/// and strictly positive; then its children. `None` if an error was found in the split or in
+/// one of its children.
+fn check_split(
+    split: &SplitDef,
+    model: &Model,
+    root: Option<ClassId>,
+    ids: &mut Vec<String>,
+    errors: &mut Vec<ConfigError>,
+) -> Option<CheckedSplit> {
+    let error_count = errors.len();
+    let count = split.children.len();
+    if count < 2 {
+        errors.push(ConfigError::SplitChildren {
+            split: split.id.clone(),
+            count,
+        });
+    }
+    let weights = match &split.weights {
+        None => vec![1.0; count],
+        Some(weights) => {
+            if weights.len() != count {
+                errors.push(ConfigError::SplitWeightCount {
+                    split: split.id.clone(),
+                    children: count,
+                    weights: weights.len(),
+                });
+            }
+            for (index, weight) in weights.iter().enumerate() {
+                if !(weight.is_finite() && *weight > 0.0) {
+                    errors.push(ConfigError::SplitWeightValue {
+                        split: split.id.clone(),
+                        index,
+                    });
+                }
+            }
+            weights.clone()
+        }
+    };
+    let split_ok = errors.len() == error_count;
+    // The children are checked even if the split itself is wrong, so that all the errors are
+    // reported. `collect` into an `Option<Vec<_>>` gives `None` if one child is `None`.
+    let children: Vec<Option<CheckedContent>> = split
+        .children
+        .iter()
+        .map(|child| check_content(child, model, root, ids, errors))
+        .collect();
+    let children: Option<Vec<CheckedContent>> = children.into_iter().collect();
+    if !split_ok {
+        return None;
+    }
+    Some(CheckedSplit {
+        id: split.id.clone(),
+        direction: split.direction,
+        weights,
+        children: children?,
+    })
+}
+
+/// Checks a view: a table has data, an empty view none. `None` if an error was found, or if the
+/// data of a table cannot be followed for lack of a root (an error already reported).
+fn check_view(
+    view: &ViewDef,
+    model: &Model,
+    root: Option<ClassId>,
+    errors: &mut Vec<ConfigError>,
+) -> Option<CheckedView> {
     let id = view.id.clone();
+    let checked = match (&view.widget, &view.data) {
+        (Widget::Empty(_), None) => Ok(CheckedView::Empty { id }),
+        (Widget::Empty(_), Some(_)) => Err(ConfigError::UnexpectedData { view: id }),
+        (Widget::Table(_), None) => Err(ConfigError::MissingData { view: id }),
+        (Widget::Table(_), Some(data)) => {
+            check_table_data(&id, data, model, root?).map(CheckedView::Table)
+        }
+    };
+    checked.map_err(|e| errors.push(e)).ok()
+}
+
+/// Checks the data of a table view: a path like a target, whose last reference is a list.
+fn check_table_data(
+    view: &str,
+    data_path: &str,
+    model: &Model,
+    root: ClassId,
+) -> Result<CheckedTableView, ConfigError> {
+    let id = view.to_owned();
     // The objects shown are not created by the view: an abstract type can be traversed, its
     // object having a concrete class.
-    let data = follow(model, root, &view.data, true).map_err(|error| match error {
+    let data = follow(model, root, data_path, true).map_err(|error| match error {
         PathError::Invalid => ConfigError::InvalidData {
             view: id.clone(),
-            data: view.data.clone(),
+            data: data_path.to_owned(),
         },
         PathError::UnknownSegment { segment, class } => ConfigError::UnknownDataSegment {
             view: id.clone(),
@@ -400,7 +571,7 @@ fn check_view(view: &ViewDef, model: &Model, root: ClassId) -> Result<CheckedVie
             segment: last.name().to_owned(),
         });
     }
-    Ok(CheckedView {
+    Ok(CheckedTableView {
         id,
         class: last.target(),
         data,

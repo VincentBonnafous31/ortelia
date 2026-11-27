@@ -346,7 +346,7 @@
       ]
     },
     "Content": {
-      "description": "The content of a window, chosen by `_type_`.",
+      "description": "The content of a window, or a child of a split, chosen by `_type_`.",
       "oneOf": [
         {
           "description": "A view: a widget that shows the data of a path.",
@@ -357,23 +357,69 @@
               "const": "View"
             },
             "id": {
-              "description": "The identifier of the view.",
+              "description": "The identifier of the view, unique among the views and splits of the window.",
               "type": "string"
             },
             "widget": {
               "$ref": "#/definitions/Widget"
             },
             "data": {
-              "description": "The data shown: `/r1/…/rn`, containment references from the root, the last one a list.",
-              "type": "string"
+              "description": "The data shown: `/r1/…/rn`, containment references from the root, the last one a list.\nRequired by a table; an empty view has none.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
             }
           },
           "additionalProperties": false,
           "required": [
             "_type_",
             "id",
-            "widget",
-            "data"
+            "widget"
+          ]
+        },
+        {
+          "description": "A split: children side by side, or one above the other, each with a share of the space.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "Split"
+            },
+            "id": {
+              "description": "The identifier of the split, unique among the views and splits of the window.",
+              "type": "string"
+            },
+            "direction": {
+              "$ref": "#/definitions/Direction"
+            },
+            "weights": {
+              "description": "One weight per child, each strictly positive: a child gets its weight divided by the sum\nof the weights (`[65, 35]`: 65 % and 35 %). By default, equal shares.",
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "type": "number",
+                "format": "double"
+              },
+              "default": null
+            },
+            "children": {
+              "description": "At least two children: views or splits.",
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Content"
+              }
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_",
+            "id",
+            "direction",
+            "children"
           ]
         }
       ]
@@ -394,6 +440,35 @@
           "required": [
             "_type_"
           ]
+        },
+        {
+          "description": "Nothing: the view only holds its place in the window.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "Empty"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_"
+          ]
+        }
+      ]
+    },
+    "Direction": {
+      "description": "How the children of a split are laid out.",
+      "oneOf": [
+        {
+          "description": "Side by side, from left to right.",
+          "type": "string",
+          "const": "horizontal"
+        },
+        {
+          "description": "One above the other, from top to bottom.",
+          "type": "string",
+          "const": "vertical"
         }
       ]
     }

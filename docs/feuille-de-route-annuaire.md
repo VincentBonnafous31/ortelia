@@ -102,11 +102,20 @@ Contenu :
 On scinde la fenêtre : la table à gauche, à droite un panneau de propriétés qui affiche la personne sélectionnée. Pas encore d'édition.
 
 Essai technique, en début d'incrément :
-- S3 : `egui_tiles` avec egui 0.37, pour les containers.
+- S3 : `egui_tiles` avec egui 0.37, pour les containers. **Fait** (changement `conteneur-split`, compte rendu `docs/essais/s3-conteneurs.md`) : egui_tiles est retenu, tous les critères sont vérifiés par des tests du dépôt (split sans onglets ni glisser-déposer, split imbriqué, table dans une tuile, séparation glissée et double-cliquée dans un test sans écran, parts retrouvées après fermeture, capture sous lavapipe).
+
+L'incrément est découpé en trois changements OpenSpec :
+1. `conteneur-split` : essai S3 et container `Split`, avec une vue vide à droite de la table ;
+2. le formulaire : sa description dans `app.json`, son modèle dans la présentation et son dessin, d'abord vide, dans la vue de droite ;
+3. le broker de sélection : la sélection dans la table, et la vue des propriétés, qui écoute la sélection et affiche le formulaire de la classe de l'objet sélectionné.
 
 Contenu :
 - `app.json` complété : container `Split`, vue des propriétés, présentation du formulaire de `Personne`.
-- Container `Split`, dont la position de la séparation va dans l'état de session.
+- Container `Split`, dont la position de la séparation va dans l'état de session. **Fait** (changement `conteneur-split`) :
+  - `app.json` au format 0.5 : le contenu de la fenêtre est un arbre de splits (`horizontal` ou `vertical`, au moins deux enfants, `weights` facultatifs, ramenés à des parts de somme 1) et de vues, dont le nouveau widget `Empty` ; vues et splits partagent un même espace d'identifiants ;
+  - l'annuaire est un split `principal` : la table `personnes` sur 65 % de la largeur, la vue vide `proprietes` sur 35 % ;
+  - la structure est fixe (ni onglets, ni glisser-déposer des vues) ; la séparation se glisse, et un double-clic partage également l'espace ;
+  - les parts de chaque split vont dans `app.session.json` (clé `containers`, sans changer de version de format), et sont restaurées à l'ouverture ; des parts d'un nombre faux ou non strictement positives sont ignorées.
 - Formulaire **déduit du modèle** (widgets simples : `text`, `textArea`, `number`, `checkbox`, `combo`, `radio`, `date`, `dateTime`), mise en page en grille, champs en lecture seule.
 - Broker de sélection : la table pilote le panneau de propriétés.
 - Capture de référence du formulaire (la plateforme des captures est choisie à l'incrément 2).

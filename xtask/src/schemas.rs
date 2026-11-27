@@ -148,19 +148,54 @@ mod tests {
             "#/definitions/Content"
         );
         let variants = |name: &str| definitions[name]["oneOf"].as_array().expect(name).clone();
-        let [view] = &variants("Content")[..] else {
-            panic!("one variant of Content")
+        let [view, split] = &variants("Content")[..] else {
+            panic!("two variants of Content")
         };
         assert_eq!(view["properties"]["_type_"]["const"], "View");
         assert_eq!(keys(view), ["_type_", "id", "widget", "data"]);
         assert_eq!(view["additionalProperties"], false);
+        assert_eq!(
+            view["required"],
+            serde_json::json!(["_type_", "id", "widget"])
+        );
         assert_eq!(view["properties"]["widget"]["$ref"], "#/definitions/Widget");
-        let [table] = &variants("Widget")[..] else {
-            panic!("one variant of Widget")
+        // The children of a split are contents of the same type: the schema is recursive.
+        assert_eq!(split["properties"]["_type_"]["const"], "Split");
+        assert_eq!(
+            keys(split),
+            ["_type_", "id", "direction", "weights", "children"]
+        );
+        assert_eq!(split["additionalProperties"], false);
+        assert_eq!(
+            split["required"],
+            serde_json::json!(["_type_", "id", "direction", "children"])
+        );
+        assert_eq!(
+            split["properties"]["children"]["items"]["$ref"],
+            "#/definitions/Content"
+        );
+        assert_eq!(split["properties"]["weights"]["items"]["type"], "number");
+        let [table, empty] = &variants("Widget")[..] else {
+            panic!("two variants of Widget")
         };
-        assert_eq!(table["properties"]["_type_"]["const"], "Table");
-        assert_eq!(table["additionalProperties"], false);
-        assert_eq!(table["required"], serde_json::json!(["_type_"]));
+        for (widget, name) in [(table, "Table"), (empty, "Empty")] {
+            assert_eq!(widget["properties"]["_type_"]["const"], name);
+            assert_eq!(widget["additionalProperties"], false, "{name}");
+            assert_eq!(widget["required"], serde_json::json!(["_type_"]), "{name}");
+        }
+    }
+
+    /// Scenario "Direction d'un split": only `horizontal` and `vertical`.
+    #[test]
+    fn direction_of_a_split() {
+        let app = schema("app.schema.json");
+        let values: Vec<&str> = app["definitions"]["Direction"]["oneOf"]
+            .as_array()
+            .expect("oneOf")
+            .iter()
+            .map(|value| value["const"].as_str().expect("const"))
+            .collect();
+        assert_eq!(values, ["horizontal", "vertical"]);
     }
 
     /// The model schema follows the keys of the model file.

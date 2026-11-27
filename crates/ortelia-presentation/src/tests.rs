@@ -3,14 +3,8 @@
 
 use super::*;
 use crate::test_support::{
-    capture_log, directory_with, example, folder, lock_log_tests, open_example, table,
+    capture_log, directory_with, example, folder, lock_log_tests, open_dir, open_example, table,
 };
-
-fn open_dir(dir: &tempfile::TempDir) -> AppState {
-    let mut state = AppState::open(&dir.path().join("app.json"));
-    state.prepare();
-    state
-}
 
 /// The annuaire without the French labels of `Personne.prenom` and `SituationFamiliale.VEUF`.
 fn two_missing_labels() -> String {
@@ -38,6 +32,7 @@ fn texts_of_the_main_window() {
             height: 700.0
         }
     );
+    // The layout itself is checked by the tests of `layout`.
     let table = table(&state);
     assert_eq!(table.id(), "personnes");
     assert_eq!(table.row_count(), 10);
@@ -187,7 +182,10 @@ fn no_warning() {
 #[test]
 fn table_intents() {
     let mut state = open_example();
-    state.dispatch(Intent::Table(TableIntent::SetFilter("dup".into())));
+    state.dispatch(Intent::table(
+        "personnes",
+        TableIntent::SetFilter("dup".into()),
+    ));
     state.prepare();
     assert_eq!(table(&state).counter(), "1 / 10");
     assert_eq!(table(&state).filter(), "dup");

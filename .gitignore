@@ -30,3 +30,5 @@ Thumbs.db
 # app.json when they close: a state of use, not a part of the definition
 *.session.json
 *.session.json.*.tmp
+# An executable copied next to the annuaire to try it
+examples/annuaire/ortelia.exe

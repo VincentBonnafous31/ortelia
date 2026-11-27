@@ -28,6 +28,12 @@ fn state(order: SortOrder) -> SessionFile {
                 filter: "dup".to_owned(),
             }),
         }],
+        containers: vec![ContainerSession {
+            id: "principal".to_owned(),
+            split: Some(SplitSession {
+                weights: vec![0.7, 0.3],
+            }),
+        }],
     }
 }
 
@@ -235,7 +241,9 @@ fn unknown_keys() {
                                  "table": { "columns": [ { "path": "nom", "width": 180,
                                                            "visible": true } ],
                                             "sort": [ { "path": "nom", "order": "desc" } ],
-                                            "filter": "dup" } } ] }"#;
+                                            "filter": "dup" } } ],
+                    "containers": [ { "id": "principal", "tabs": { "active": 0 },
+                                      "split": { "weights": [0.7, 0.3], "collapsed": 1 } } ] }"#;
     let (file, log, _dir) = load_text(text);
     assert_eq!(file, Some(state(SortOrder::Desc)));
     assert!(!log.contains(" WARN "), "{log}");

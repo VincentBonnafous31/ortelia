@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::{Duration, Instant};
 
-use ortelia_presentation::{AppState, Intent, MainContent, TableIntent};
+use ortelia_presentation::{AppState, Intent, MainContent, TableIntent, ViewRef};
 
 /// A step of the measure: its name, its time, and the rows shown after it (none before the
 /// first `prepare`).
@@ -64,6 +64,8 @@ fn measure(path: &Path) -> Result<Vec<Step>, Vec<String>> {
     if !state.open_errors().is_empty() {
         return Err(state.open_errors().to_vec());
     }
+    // The table measured, and to which the intents go: the first of the window.
+    let view = first_table(&state).ok_or_else(|| vec!["the window has no table".to_owned()])?;
     steps.push(Step {
         name: "opening (reading of the files included)",
         time: opening,
@@ -73,29 +75,35 @@ fn measure(path: &Path) -> Result<Vec<Step>, Vec<String>> {
     // The sort of `app.json` (`nom` then `prenom`), with the folding of their texts.
     steps.push(timed(
         &mut state,
+        &view,
         "initial sort (nom, prenom; keys folded)",
         None,
     ));
     // A click on `nom`: sorted on it alone, descending (it was ascending), keys kept.
-    let click = Intent::Table(TableIntent::SortBy {
-        column: 0,
-        add: false,
-    });
-    steps.push(timed(&mut state, "sort by nom", Some(click)));
+    let click = Intent::table(
+        &view,
+        TableIntent::SortBy {
+            column: 0,
+            add: false,
+        },
+    );
+    steps.push(timed(&mut state, &view, "sort by nom", Some(click)));
     // The first character typed builds the text of each row, then filters.
-    let first = Intent::Table(TableIntent::SetFilter("d".into()));
+    let first = Intent::table(&view, TableIntent::SetFilter("d".into()));
     steps.push(timed(
         &mut state,
+        &view,
         "preparation of the filter (\"d\")",
         Some(first),
     ));
-    let dup = Intent::Table(TableIntent::SetFilter("dup".into()));
-    steps.push(timed(&mut state, "filter \"dup\"", Some(dup)));
+    let dup = Intent::table(&view, TableIntent::SetFilter("dup".into()));
+    steps.push(timed(&mut state, &view, "filter \"dup\"", Some(dup)));
     Ok(steps)
 }
 
-/// Dispatches `intent`, then times the `prepare` that follows.
-fn timed(state: &mut AppState, name: &'static str, intent: Option<Intent>) -> Step {
+/// Dispatches `intent`, then times the `prepare` that follows; counts the rows of the table
+/// view `view`.
+fn timed(state: &mut AppState, view: &str, name: &'static str, intent: Option<Intent>) -> Step {
     if let Some(intent) = intent {
         state.dispatch(intent);
     }
@@ -105,15 +113,28 @@ fn timed(state: &mut AppState, name: &'static str, intent: Option<Intent>) -> St
     Step {
         name,
         time,
-        rows: Some(rows(state)),
+        rows: Some(rows(state, view)),
     }
 }
 
-/// The number of rows shown.
-fn rows(state: &AppState) -> usize {
-    match state.content() {
-        MainContent::Table(table) => table.row_count(),
-        MainContent::Nothing => 0,
+/// The identifier of the first table view of the window.
+fn first_table(state: &AppState) -> Option<String> {
+    let MainContent::Layout(layout) = state.content() else {
+        return None;
+    };
+    layout
+        .views()
+        .into_iter()
+        .map(|view| view.id())
+        .find(|id| matches!(state.view(id), Some(ViewRef::Table(_))))
+        .map(str::to_owned)
+}
+
+/// The number of rows shown by the table view `view`.
+fn rows(state: &AppState, view: &str) -> usize {
+    match state.view(view) {
+        Some(ViewRef::Table(table)) => table.row_count(),
+        _ => 0,
     }
 }
 

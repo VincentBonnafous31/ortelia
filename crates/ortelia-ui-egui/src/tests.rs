@@ -8,7 +8,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 use egui::Role;
 use egui_kittest::Harness;
 use egui_kittest::kittest::Queryable;
-use ortelia_presentation::{AppState, Intent, TableIntent};
+use ortelia_presentation::{AppState, Intent, TableIntent, ViewRef};
 
 use super::*;
 
@@ -33,7 +33,7 @@ fn examples() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("../../examples")
 }
 
-fn example(path: &str) -> String {
+pub(crate) fn example(path: &str) -> String {
     let path = examples().join(path);
     std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()))
 }
@@ -61,31 +61,61 @@ fn folder_with(app: &str, persons: &str) -> tempfile::TempDir {
 }
 
 /// The state of the directory application with another `app.json` and `personnes.json`.
-fn directory_with(app: &str, persons: &str) -> AppState {
+pub(crate) fn directory_with(app: &str, persons: &str) -> AppState {
     // Everything is read at the opening: the folder can go.
     AppState::open(&folder_with(app, persons).path().join("app.json"))
 }
 
 /// A state and the intents its drawing gave, not dispatched: the tests check what the
 /// interface asks, not what the presentation does of it.
-struct Recorder {
-    state: AppState,
-    intents: Vec<Intent>,
+pub(crate) struct Recorder {
+    pub(crate) state: AppState,
+    pub(crate) layout: Option<LayoutTiles>,
+    pub(crate) intents: Vec<Intent>,
 }
 
 /// A harness that draws the main window of `state` and records its intents.
 fn recorder(state: AppState) -> Harness<'static, Recorder> {
-    Harness::new_ui_state(
-        |ui, recorder: &mut Recorder| {
-            recorder.state.prepare();
-            let intents = draw_main_window(ui, &recorder.state);
-            recorder.intents.extend(intents);
-        },
-        Recorder {
-            state,
-            intents: Vec::new(),
-        },
-    )
+    recorder_of(Harness::builder(), state)
+}
+
+/// A harness of `builder` (size, time step) that draws the main window of `state`, by the
+/// tiles of its layout, and records its intents. A harness of an eframe application, as the
+/// executable: without the outer margin that egui_kittest puts around a drawing function, the
+/// positions are those of the window.
+pub(crate) fn recorder_of(
+    builder: egui_kittest::HarnessBuilder<Recorder>,
+    state: AppState,
+) -> Harness<'static, Recorder> {
+    builder.build_eframe(|_cc| Recorder {
+        layout: LayoutTiles::of(&state),
+        state,
+        intents: Vec::new(),
+    })
+}
+
+/// Draws as `OrteliaApp` does, but records the intents instead of dispatching them.
+impl eframe::App for Recorder {
+    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        self.state.prepare();
+        let intents = draw_main_window(ui, &self.state, self.layout.as_mut());
+        self.intents.extend(intents);
+    }
+}
+
+/// Drags the pointer from `from` to `to`, in steps, as a real pointer: a drag starts beyond a
+/// small distance.
+pub(crate) fn drag<State>(harness: &mut Harness<'_, State>, from: egui::Pos2, to: egui::Pos2) {
+    harness.hover_at(from);
+    harness.run();
+    harness.drag_at(from);
+    harness.run();
+    for step in 1..=4 {
+        harness.hover_at(from + (to - from) * (step as f32 / 4.0));
+        harness.run();
+    }
+    harness.drop_at(to);
+    harness.run();
 }
 
 /// The intents of the table recorded, without the resizes (a first layout may adjust widths).
@@ -95,8 +125,11 @@ fn table_intents(harness: &Harness<'_, Recorder>) -> Vec<TableIntent> {
         .intents
         .iter()
         .filter_map(|intent| match intent {
-            Intent::Table(TableIntent::ResizeColumn { .. }) => None,
-            Intent::Table(intent) => Some(intent.clone()),
+            Intent::Table {
+                intent: TableIntent::ResizeColumn { .. },
+                ..
+            } => None,
+            Intent::Table { intent, .. } => Some(intent.clone()),
             _ => None,
         })
         .collect()
@@ -184,7 +217,10 @@ fn filter_typed() {
 #[test]
 fn filter_cleared() {
     let mut state = directory();
-    state.dispatch(Intent::Table(TableIntent::SetFilter("dup".into())));
+    state.dispatch(Intent::table(
+        "personnes",
+        TableIntent::SetFilter("dup".into()),
+    ));
     let mut harness = recorder(state);
     harness.run();
     harness.get_by_label("1 / 10");
@@ -209,17 +245,7 @@ fn header_dragged_and_dropped() {
         .get_by_role_and_label(Role::ColumnHeader, "Nom")
         .rect()
         .center();
-    harness.hover_at(from);
-    harness.run();
-    harness.drag_at(from);
-    harness.run();
-    // Moved in steps, as a real pointer: the drag starts beyond a small distance.
-    for step in 1..=4 {
-        harness.hover_at(from + (to - from) * (step as f32 / 4.0));
-        harness.run();
-    }
-    harness.drop_at(to);
-    harness.run();
+    drag(&mut harness, from, to);
     assert_eq!(
         table_intents(&harness),
         [TableIntent::MoveColumn { from: 2, to: 0 }]
@@ -236,22 +262,16 @@ fn column_resized() {
         .rect();
     // The resize handle is the right edge of the column, half the spacing further.
     let edge = egui::pos2(nom.right() + 4.0, nom.center().y);
-    harness.hover_at(edge);
-    harness.run();
-    harness.drag_at(edge);
-    harness.run();
-    for step in 1..=4 {
-        harness.hover_at(edge + egui::vec2(15.0 * step as f32, 0.0));
-        harness.run();
-    }
-    harness.drop_at(edge + egui::vec2(60.0, 0.0));
-    harness.run();
+    drag(&mut harness, edge, edge + egui::vec2(60.0, 0.0));
     let resized: Vec<(usize, f32)> = harness
         .state()
         .intents
         .iter()
         .filter_map(|intent| match intent {
-            Intent::Table(TableIntent::ResizeColumn { column, width }) => Some((*column, *width)),
+            Intent::Table {
+                intent: TableIntent::ResizeColumn { column, width },
+                ..
+            } => Some((*column, *width)),
             _ => None,
         })
         .collect();
@@ -436,6 +456,7 @@ fn window_recorder(state: AppState) -> Harness<'static, Recorder> {
             },
             Recorder {
                 state,
+                layout: None,
                 intents: Vec::new(),
             },
         )
@@ -554,17 +575,18 @@ fn user_actions() {
 }
 
 /// A copy of the application of `examples/annuaire` in a temporary folder.
-fn directory_copy() -> tempfile::TempDir {
+pub(crate) fn directory_copy() -> tempfile::TempDir {
     folder_with(
         &example("annuaire/app.json"),
         &example("annuaire/personnes.json"),
     )
 }
 
-/// The width of the column of header `header`, and the indicator of its sort.
+/// The width of the column of header `header` of the table of the annuaire, and the indicator
+/// of its sort.
 fn column_state(state: &AppState, header: &str) -> (f32, Option<String>) {
-    let MainContent::Table(table) = state.content() else {
-        panic!("no table");
+    let Some(ViewRef::Table(table)) = state.view("personnes") else {
+        panic!("no table personnes");
     };
     let column = table
         .columns()
@@ -592,16 +614,7 @@ fn closed_then_opened_again() {
         .get_by_role_and_label(Role::ColumnHeader, "Nom")
         .rect();
     let edge = egui::pos2(nom.right() + 4.0, nom.center().y);
-    harness.hover_at(edge);
-    harness.run();
-    harness.drag_at(edge);
-    harness.run();
-    for step in 1..=4 {
-        harness.hover_at(edge + egui::vec2(15.0 * step as f32, 0.0));
-        harness.run();
-    }
-    harness.drop_at(edge + egui::vec2(60.0, 0.0));
-    harness.run();
+    drag(&mut harness, edge, edge + egui::vec2(60.0, 0.0));
     // `prenom` is the second criterion of the presentation: a click sorts on it alone,
     // descending, the next one removes the sort, the third sorts ascending.
     for _ in 0..3 {

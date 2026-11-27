@@ -5,9 +5,11 @@
 //! only), and the intents gathered while drawing are dispatched to the state afterwards.
 
 mod dialogs;
+mod layout;
 mod table;
 
-use ortelia_presentation::{AppState, Intent, MainContent};
+use layout::LayoutTiles;
+use ortelia_presentation::{AppState, Intent};
 
 /// Opens the main window and runs the event loop until the window is closed.
 ///
@@ -38,6 +40,8 @@ fn native_options(state: &AppState) -> eframe::NativeOptions {
 /// The eframe application: owns the presentation state and draws it at each frame.
 struct OrteliaApp {
     state: AppState,
+    /// The tiles of the layout; `None` without application.
+    layout: Option<LayoutTiles>,
     /// Set after the first frame, so that "main window shown" is logged only once.
     first_frame_logged: bool,
     /// Set once the closing of the window was asked of the system.
@@ -48,6 +52,8 @@ struct OrteliaApp {
 impl OrteliaApp {
     fn new(state: AppState) -> Self {
         OrteliaApp {
+            // Built once, from the layout of the state, session state restored.
+            layout: LayoutTiles::of(&state),
             state,
             first_frame_logged: false,
             close_sent: false,
@@ -60,7 +66,8 @@ impl eframe::App for OrteliaApp {
     /// Called by eframe at each frame (immediate mode: the whole UI is redrawn each time).
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         self.state.prepare();
-        let intents = draw_main_window(ui, &self.state);
+        // Two fields borrowed apart: the state read, the tiles changed.
+        let intents = draw_main_window(ui, &self.state, self.layout.as_mut());
         if !intents.is_empty() {
             // The state changes after the drawing: the next frame shows it.
             ui.ctx().request_repaint();
@@ -163,18 +170,30 @@ fn window_intent(
     })
 }
 
-/// Draws the main window: the status bar, the content, and the dialog over them. Drawing only:
-/// returns the intents of the user.
-fn draw_main_window(ui: &mut egui::Ui, state: &AppState) -> Vec<Intent> {
+/// Draws the main window: the status bar, the layout of `state` by its tiles `layout`, and the
+/// dialog over them. Drawing only: returns the intents of the user.
+fn draw_main_window(
+    ui: &mut egui::Ui,
+    state: &AppState,
+    layout: Option<&mut LayoutTiles>,
+) -> Vec<Intent> {
     let mut intents = Vec::new();
     // A bottom panel is added before the central panel, which takes the remaining space.
     if let Some(text) = state.status_bar() {
         intents.extend(dialogs::draw_status_bar(ui, text));
     }
-    egui::CentralPanel::default().show(ui, |ui| match state.content() {
-        MainContent::Table(table) => intents.extend(table::draw_table_view(ui, table)),
-        MainContent::Nothing => {}
-    });
+    match layout {
+        // Without margin: the tiles reach the edges of the window, each view has its own.
+        Some(layout) => {
+            let frame = egui::Frame::central_panel(ui.style()).inner_margin(0);
+            egui::CentralPanel::default()
+                .frame(frame)
+                .show(ui, |ui| intents.extend(layout.draw(ui, state)));
+        }
+        None => {
+            egui::CentralPanel::default().show(ui, |_ui| {});
+        }
+    }
     if let Some(dialog) = state.dialog() {
         intents.extend(dialogs::draw_dialog(ui.ctx(), &dialog));
     }

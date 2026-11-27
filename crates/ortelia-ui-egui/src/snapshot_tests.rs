@@ -10,7 +10,7 @@
 //! in the same package, it sees the private items (`OrteliaApp`, `draw_main_window`).
 
 use super::*;
-use crate::tests::{directory, lock_app_tests};
+use crate::tests::{directory, lock_app_tests, recorder_of};
 use egui_kittest::{Harness, HarnessBuilder, OsThreshold, SnapshotError, SnapshotOptions};
 use ortelia_presentation::{AppState, Intent, TableIntent};
 
@@ -79,15 +79,8 @@ fn different_table_fails_the_comparison() {
         return;
     }
 
-    // One harness, whose state is the presentation: the test changes the filter between
-    // renders.
-    let mut harness = snapshot_harness().build_ui_state(
-        |ui, state: &mut AppState| {
-            state.prepare();
-            draw_main_window(ui, state);
-        },
-        directory(),
-    );
+    // One harness, which holds the presentation: the test changes the filter between renders.
+    let mut harness = recorder_of(snapshot_harness(), directory());
     let dir = tempfile::tempdir().expect("a temporary directory should be created");
     let options = SnapshotOptions::new().output_path(dir.path());
 
@@ -106,9 +99,10 @@ fn different_table_fails_the_comparison() {
         .expect("a second render of the same table should match the reference");
 
     // 3. The table filtered by `dup` does not match.
-    harness
-        .state_mut()
-        .dispatch(Intent::Table(TableIntent::SetFilter("dup".into())));
+    harness.state_mut().state.dispatch(Intent::table(
+        "personnes",
+        TableIntent::SetFilter("dup".into()),
+    ));
     harness.run();
     let other = harness.render().expect("the main window should render");
     match egui_kittest::try_image_snapshot_options(&other, "main_window", &options) {

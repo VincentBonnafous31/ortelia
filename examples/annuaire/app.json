@@ -1,6 +1,6 @@
 {
   "$schema": "../../schemas/app.schema.json",
-  "formatVersion": "0.4",
+  "formatVersion": "0.5",
   "id": "annuaire",
   "name": "Annuaire des personnes",
   "languages": ["fr", "en"],
@@ -86,10 +86,23 @@
     "width": 1000,
     "height": 700,
     "content": {
-      "_type_": "View",
-      "id": "personnes",
-      "widget": { "_type_": "Table" },
-      "data": "/annuaire/personnes"
+      "_type_": "Split",
+      "id": "principal",
+      "direction": "horizontal",
+      "weights": [65, 35],
+      "children": [
+        {
+          "_type_": "View",
+          "id": "personnes",
+          "widget": { "_type_": "Table" },
+          "data": "/annuaire/personnes"
+        },
+        {
+          "_type_": "View",
+          "id": "proprietes",
+          "widget": { "_type_": "Empty" }
+        }
+      ]
     }
   }
 }

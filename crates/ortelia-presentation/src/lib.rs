@@ -12,6 +12,7 @@
 pub mod fold;
 pub mod format;
 pub mod labels;
+pub mod layout;
 pub mod session;
 pub mod table;
 
@@ -21,11 +22,14 @@ use ortelia_config::{MAX_WINDOW_SIZE, MIN_WINDOW_SIZE};
 use ortelia_service::app::{AppContext, OpenError, SourceError, SourceStatus};
 
 pub use format::Cell;
-pub use ortelia_config::{Align, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH};
+pub use layout::{LayoutNode, SplitNode, ViewNode};
+// Re-exported, so that the user interfaces need not depend on `ortelia-config`.
+pub use ortelia_config::{Align, Direction, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH};
 pub use table::{Column, TableIntent, TableRef, TableView};
 
 use labels::LabelLookup;
-use session::{SessionFile, ViewSession, WindowSession};
+use layout::ViewContent;
+use session::{ContainerSession, SessionFile, SplitSession, ViewSession, WindowSession};
 
 /// The title of the window when no application could be opened.
 const DEFAULT_TITLE: &str = "Ortelia";
@@ -50,7 +54,8 @@ pub const CLEAR_FILTER: &str = "Effacer le filtre";
 /// What the user interface asks of the application.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Intent {
-    Table(TableIntent),
+    /// An intent of the table of the view `view`, applied to that table only.
+    Table { view: String, intent: TableIntent },
     /// Opens the list of the warnings.
     ShowWarnings,
     /// Closes the dialog shown.
@@ -59,10 +64,20 @@ pub enum Intent {
     Quit,
     /// The window has a new size, in points, while neither maximized, nor in full screen,
     /// nor minimized.
-    WindowResized {
-        width: f32,
-        height: f32,
-    },
+    WindowResized { width: f32, height: f32 },
+    /// The user moved a separator of the split `split`: the shares of its children, in order,
+    /// as the interface has them (they need not add up to 1).
+    SplitResized { split: String, shares: Vec<f32> },
+}
+
+impl Intent {
+    /// An intent of the table of the view `view`.
+    pub fn table(view: &str, intent: TableIntent) -> Intent {
+        Intent::Table {
+            view: view.to_owned(),
+            intent,
+        }
+    }
 }
 
 /// The main window: its title and its initial size.
@@ -77,9 +92,18 @@ pub struct WindowViewModel {
 
 /// What the main window shows.
 pub enum MainContent<'a> {
-    Table(TableRef<'a>),
+    /// The layout of the window: its splits and views. The widget of a view is read by
+    /// [`AppState::view`].
+    Layout(&'a LayoutNode),
     /// No application: only the dialog of the error.
     Nothing,
+}
+
+/// The widget of a view, as the user interface reads it.
+pub enum ViewRef<'a> {
+    Table(TableRef<'a>),
+    /// Nothing to draw.
+    Empty,
 }
 
 /// A modal dialog: a title, lines, and a button. It borrows its lines from the state, like
@@ -130,7 +154,8 @@ pub struct AppState {
 #[derive(Debug)]
 struct OpenedApp {
     context: AppContext,
-    table: TableView,
+    /// The splits and views of the window, with the tables.
+    layout: LayoutNode,
 }
 
 impl AppState {
@@ -160,8 +185,10 @@ impl AppState {
         state
     }
 
-    /// Restores the size of the window and the views of `saved`: the views that the
-    /// application does not have are ignored.
+    /// Restores the size of the window, the tables and the shares of the splits of `saved`,
+    /// and logs how many views and containers were restored. The views and splits that the
+    /// application does not have are ignored, as are the shares of a split that are not one
+    /// per child, each finite and strictly positive.
     fn restore(&mut self, saved: &SessionFile, file: &Path) {
         if let Some(window) = &saved.window {
             if let Some(width) = window
@@ -180,25 +207,52 @@ impl AppState {
             }
         }
         let mut restored = 0;
-        if let Some(app) = &mut self.app {
-            let model = app.context.document().model();
-            // The first table of the identifier counts: a newer version may describe another
-            // widget of the same view, without `table`, before it.
-            let table = saved
-                .views
-                .iter()
-                .filter(|v| v.id == app.table.id())
-                .find_map(|v| v.table.as_ref());
-            if let Some(table) = table {
-                app.table.restore(table, model);
-                restored += 1;
+        let mut restored_containers = 0;
+        if let Some(OpenedApp { context, layout }) = &mut self.app {
+            // Two fields borrowed apart: the model read, the tables changed.
+            let model = context.document().model();
+            for view in layout.views_mut() {
+                // The first table of the identifier counts: a newer version may describe
+                // another widget of the same view, without `table`, before it.
+                let saved_table = saved
+                    .views
+                    .iter()
+                    .filter(|v| v.id == view.id())
+                    .find_map(|v| v.table.as_ref());
+                if let ViewContent::Table(table) = &mut view.content
+                    && let Some(saved_table) = saved_table
+                {
+                    table.restore(saved_table, model);
+                    restored += 1;
+                }
             }
+            layout.for_each_split_mut(&mut |split| {
+                // The first split of the identifier counts, as for the tables. An entry that
+                // names a view is not reached: only the splits of the layout are looked up.
+                let saved_split = saved
+                    .containers
+                    .iter()
+                    .filter(|c| c.id == split.id())
+                    .find_map(|c| c.split.as_ref());
+                // Ignored, without warning, if they are not one per child, each finite and
+                // positive: the shares of `app.json` stay.
+                if let Some(saved_split) = saved_split
+                    && split.set_parts(&saved_split.weights)
+                {
+                    restored_containers += 1;
+                }
+            });
         }
-        tracing::info!(path = %file.display(), views = restored, "session state restored");
+        tracing::info!(
+            path = %file.display(),
+            views = restored,
+            containers = restored_containers,
+            "session state restored"
+        );
     }
 
-    /// The session state of the application: the size of the window, kept within bounds, and
-    /// the layout of each table. `None` if no application is open.
+    /// The session state of the application: the size of the window, kept within bounds, the
+    /// layout of each table, and the shares of each split. `None` if no application is open.
     pub fn session(&self) -> Option<SessionFile> {
         let app = self.app.as_ref()?;
         let (width, height) = self.reported_window_size();
@@ -208,10 +262,29 @@ impl AppState {
                 width: Some(bounded_window_size(width)),
                 height: Some(bounded_window_size(height)),
             }),
-            views: vec![ViewSession {
-                id: app.table.id().to_owned(),
-                table: Some(app.table.session(app.context.document().model())),
-            }],
+            views: app
+                .layout
+                .views()
+                .into_iter()
+                .filter_map(|view| match &view.content {
+                    ViewContent::Table(table) => Some(ViewSession {
+                        id: view.id().to_owned(),
+                        table: Some(table.session(app.context.document().model())),
+                    }),
+                    ViewContent::Empty => None,
+                })
+                .collect(),
+            containers: app
+                .layout
+                .splits()
+                .into_iter()
+                .map(|split| ContainerSession {
+                    id: split.id().to_owned(),
+                    split: Some(SplitSession {
+                        weights: split.parts().to_vec(),
+                    }),
+                })
+                .collect(),
         })
     }
 
@@ -256,7 +329,7 @@ impl AppState {
         let model = context.document().model();
         let lang = &app.languages[0];
         let mut lookup = LabelLookup::new(&app.labels, model, lang);
-        let table = TableView::new(app, model, &mut lookup);
+        let layout = LayoutNode::build(app, &app.window.content, model, &mut lookup);
 
         let mut warnings: Vec<String> = context.warnings().iter().map(|w| w.to_string()).collect();
         let mut warning_count = warnings.len();
@@ -306,7 +379,7 @@ impl AppState {
                 height: window.height.map_or(DEFAULT_SIZE.1, |h| h as f32),
             },
             dialog: (!source_errors.is_empty()).then_some(DialogKind::SourcesFailed),
-            app: Some(OpenedApp { context, table }),
+            app: Some(OpenedApp { context, layout }),
             open_errors: Vec::new(),
             source_errors,
             warnings,
@@ -330,16 +403,33 @@ impl AppState {
     /// Brings the indexes up to date, at the beginning of a frame.
     pub fn prepare(&mut self) {
         if let Some(app) = &mut self.app {
-            app.table.prepare(app.context.document());
+            // `AppContext` and the layout are two fields: borrowed apart, one shared and the
+            // other mutable.
+            let document = app.context.document();
+            for view in app.layout.views_mut() {
+                if let ViewContent::Table(table) = &mut view.content {
+                    table.prepare(document);
+                }
+            }
         }
     }
 
     /// What the window shows.
     pub fn content(&self) -> MainContent<'_> {
         match &self.app {
-            Some(app) => MainContent::Table(app.table.read(app.context.document())),
+            Some(app) => MainContent::Layout(&app.layout),
             None => MainContent::Nothing,
         }
+    }
+
+    /// The widget of the view `id`; `None` without application, or if the window has no such
+    /// view.
+    pub fn view(&self, id: &str) -> Option<ViewRef<'_>> {
+        let app = self.app.as_ref()?;
+        Some(match &app.layout.view(id)?.content {
+            ViewContent::Table(table) => ViewRef::Table(table.read(app.context.document())),
+            ViewContent::Empty => ViewRef::Empty,
+        })
     }
 
     /// The dialog shown over the window, if any.
@@ -387,9 +477,20 @@ impl AppState {
     /// Applies an intent of the user interface.
     pub fn dispatch(&mut self, intent: Intent) {
         match intent {
-            Intent::Table(intent) => {
-                if let Some(app) = &mut self.app {
-                    app.table.apply(intent);
+            Intent::Table { view, intent } => {
+                // `if let` chained with `&&` (Rust 2024): each step goes on only if the
+                // previous one matched.
+                if let Some(app) = &mut self.app
+                    && let Some(view) = app.layout.view_mut(&view)
+                    && let ViewContent::Table(table) = &mut view.content
+                {
+                    table.apply(intent);
+                }
+            }
+            Intent::SplitResized { split, shares } => {
+                if let Some(split) = self.app.as_mut().and_then(|a| a.layout.split_mut(&split)) {
+                    // Ignored if the shares are not one per child, each finite and positive.
+                    split.set_parts(&shares);
                 }
             }
             Intent::ShowWarnings => {
