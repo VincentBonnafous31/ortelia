@@ -36,7 +36,7 @@ Les tests de capture SHALL être comparés sur une seule plateforme de rendu : L
 - **THEN** le test de capture correspondant réussit dans la CI
 
 ### Requirement: Capture de la fenêtre principale
-La fenêtre principale SHALL avoir un test de capture, rendu par l'application egui complète ouverte sur `examples/annuaire`, avec son contenu fourni par la présentation : la table des personnes, avec ses en-têtes, son tri initial et son filtre vide.
+La fenêtre principale SHALL avoir un test de capture, rendu par l'application egui complète ouverte sur `examples/annuaire`, avec son contenu fourni par la présentation : le split de l'annuaire, avec à gauche la table des personnes, ses en-têtes, son tri initial et son filtre vide, la séparation, et à droite la vue vide.
 
 #### Scenario: Fenêtre principale conforme
 - **WHEN** on rend la fenêtre principale de l'annuaire sur la plateforme de rendu retenue

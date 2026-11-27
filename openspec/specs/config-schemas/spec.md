@@ -19,7 +19,11 @@ La commande `cargo xtask gen-schemas` SHALL écrire `schemas/app.schema.json` et
 
 #### Scenario: Contenu polymorphe de la fenêtre
 - **WHEN** on lit `schemas/app.schema.json`
-- **THEN** le contenu de la fenêtre y est décrit comme un objet dont `_type_` vaut `View`, et son widget comme un objet dont `_type_` vaut `Table`
+- **THEN** le contenu de la fenêtre y est décrit comme un objet dont `_type_` vaut `View` ou `Split`, les enfants d'un split comme des contenus de ce même type, et le widget d'une vue comme un objet dont `_type_` vaut `Table` ou `Empty`
+
+#### Scenario: Direction d'un split
+- **WHEN** on lit `schemas/app.schema.json`
+- **THEN** la direction d'un split n'y admet que les valeurs `horizontal` et `vertical`
 
 #### Scenario: Génération reproductible
 - **WHEN** on lance deux fois `cargo xtask gen-schemas` sans changer le code
