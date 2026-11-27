@@ -106,7 +106,7 @@ Essai technique, en début d'incrément :
 
 L'incrément est découpé en trois changements OpenSpec :
 1. `conteneur-split` : essai S3 et container `Split`, avec une vue vide à droite de la table ;
-2. le formulaire : sa description dans `app.json`, son modèle dans la présentation et son dessin, d'abord vide, dans la vue de droite ;
+2. `formulaire` : sa description dans `app.json`, son modèle dans la présentation et son dessin, d'abord vide, dans la vue de droite ;
 3. le broker de sélection : la sélection dans la table, et la vue des propriétés, qui écoute la sélection et affiche le formulaire de la classe de l'objet sélectionné.
 
 Contenu :
@@ -116,9 +116,15 @@ Contenu :
   - l'annuaire est un split `principal` : la table `personnes` sur 65 % de la largeur, la vue vide `proprietes` sur 35 % ;
   - la structure est fixe (ni onglets, ni glisser-déposer des vues) ; la séparation se glisse, et un double-clic partage également l'espace ;
   - les parts de chaque split vont dans `app.session.json` (clé `containers`, sans changer de version de format), et sont restaurées à l'ouverture ; des parts d'un nombre faux ou non strictement positives sont ignorées.
-- Formulaire **déduit du modèle** (widgets simples : `text`, `textArea`, `number`, `checkbox`, `combo`, `radio`, `date`, `dateTime`), mise en page en grille, champs en lecture seule.
+- Formulaire **déduit du modèle** (widgets simples : `text`, `textArea`, `number`, `checkbox`, `combo`, `radio`, `date`, `dateTime`), mise en page en grille, champs en lecture seule. **Fait** (changement `formulaire`) :
+  - `app.json` au format 0.6 : la présentation d'une classe peut déclarer un formulaire (`form`) : une grille (`columns`, poids `grow`) et des éléments polymorphes, `Field` (attribut, widget, clé de libellé, cellules du libellé et du widget), `Group` (titre, grille et éléments propres), `Separator` et `Text` ; une cellule couvre `span` colonnes et peut commencer une ligne (`newRow`) ;
+  - huit widgets de champ, chacun vérifié contre le type de son attribut : `TextField`, `TextArea` (`rows`), `NumberField`, `CheckBox`, `ComboBox`, `RadioGroup`, `DateField` et `DateTimeField` (`format`) ; un champ sans widget prend celui du type de son attribut ;
+  - nouveau widget de vue `Form`, qui nomme sa classe ; le formulaire est celui de la présentation de la classe ou de sa classe mère la plus proche, sinon il est déduit du modèle (un champ par attribut) ;
+  - grille en flux dans la présentation, indépendante des formulaires : placement des cellules et largeurs des colonnes depuis les minimums que mesure l'interface ;
+  - dessin en lecture seule (texte sélectionnable, cases, listes et boutons radio désactivés), groupes dans un cadre titré, défilement dans les deux sens ; chaque widget est relié à son libellé pour l'accessibilité ;
+  - les valeurs de l'objet montré sont relues à chaque image : un objet supprimé ou d'une autre classe n'est pas montré ; dans l'annuaire, la vue de droite montre le formulaire vide de `Personne`, en attendant le broker ;
+  - capture de référence `form` (Dupont), sous lavapipe.
 - Broker de sélection : la table pilote le panneau de propriétés.
-- Capture de référence du formulaire (la plateforme des captures est choisie à l'incrément 2).
 
 **Fini quand** : choix de S3 tranché ; la sélection d'une personne l'affiche dans le formulaire, avec un widget par type d'attribut ; la disposition, séparation comprise, est retrouvée au redémarrage.
 

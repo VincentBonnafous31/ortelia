@@ -32,7 +32,13 @@ fn texts_of_the_main_window() {
             height: 700.0
         }
     );
-    // The layout itself is checked by the tests of `layout`.
+    // The layout itself is checked by the tests of `layout`: the split `principal`, with the
+    // table of the persons and the form view `proprietes`.
+    let MainContent::Layout(LayoutNode::Split(root)) = state.content() else {
+        panic!("a split")
+    };
+    assert_eq!(root.id(), "principal");
+    assert!(matches!(state.view("proprietes"), Some(ViewRef::Form(_))));
     let table = table(&state);
     assert_eq!(table.id(), "personnes");
     assert_eq!(table.row_count(), 10);
@@ -64,7 +70,8 @@ fn application_that_does_not_open() {
 fn errors_of_app_json() {
     let app = example("annuaire/app.json")
         .replace(r#""root": "Racine""#, r#""root": "Racinne""#)
-        .replace(r#""class": "Personne""#, r#""class": "Persone""#);
+        // The presentation of `Personne`, before the form view of the window.
+        .replacen(r#""class": "Personne""#, r#""class": "Persone""#, 1);
     let dir = directory_with(&app, "[]");
     let state = open_dir(&dir);
     let lines = state.dialog().expect("dialog").lines;

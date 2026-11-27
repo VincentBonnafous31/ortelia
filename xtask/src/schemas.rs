@@ -175,14 +175,82 @@ mod tests {
             "#/definitions/Content"
         );
         assert_eq!(split["properties"]["weights"]["items"]["type"], "number");
-        let [table, empty] = &variants("Widget")[..] else {
-            panic!("two variants of Widget")
+        let [table, empty, form] = &variants("Widget")[..] else {
+            panic!("three variants of Widget")
         };
         for (widget, name) in [(table, "Table"), (empty, "Empty")] {
             assert_eq!(widget["properties"]["_type_"]["const"], name);
             assert_eq!(widget["additionalProperties"], false, "{name}");
             assert_eq!(widget["required"], serde_json::json!(["_type_"]), "{name}");
         }
+        assert_eq!(form["properties"]["_type_"]["const"], "Form");
+        assert_eq!(keys(form), ["_type_", "class"]);
+        assert_eq!(form["additionalProperties"], false);
+        assert_eq!(form["required"], serde_json::json!(["_type_", "class"]));
+    }
+
+    /// Scenario "Éléments polymorphes d'un formulaire": the elements of a form and of a group
+    /// are the same polymorphic type, and so is the widget of a field.
+    #[test]
+    fn polymorphic_elements_of_a_form() {
+        let app = schema("app.schema.json");
+        let definitions = &app["definitions"];
+        let consts = |name: &str| -> Vec<String> {
+            definitions[name]["oneOf"]
+                .as_array()
+                .expect(name)
+                .iter()
+                .map(|variant| {
+                    assert_eq!(variant["additionalProperties"], false, "{name}");
+                    variant["properties"]["_type_"]["const"]
+                        .as_str()
+                        .expect("const")
+                        .to_owned()
+                })
+                .collect()
+        };
+        // An optional key is `anyOf` a definition and `null`.
+        let optional_ref = |value: &Value| value["anyOf"][0]["$ref"].clone();
+        let presentation = &definitions["PresentationDef"];
+        assert_eq!(
+            optional_ref(&presentation["properties"]["form"]),
+            "#/definitions/FormDef"
+        );
+        assert_eq!(
+            definitions["FormDef"]["properties"]["elements"]["items"]["$ref"],
+            "#/definitions/Element"
+        );
+        assert_eq!(consts("Element"), ["Field", "Group", "Separator", "Text"]);
+        let variants = definitions["Element"]["oneOf"].as_array().expect("oneOf");
+        let (field, group) = (&variants[0], &variants[1]);
+        assert_eq!(
+            keys(field),
+            ["_type_", "path", "widget", "label", "labelCell", "cell"]
+        );
+        assert_eq!(field["required"], serde_json::json!(["_type_", "path"]));
+        assert_eq!(
+            optional_ref(&field["properties"]["widget"]),
+            "#/definitions/FieldWidget"
+        );
+        // The elements of a group are elements again: the schema is recursive.
+        assert_eq!(
+            group["properties"]["elements"]["items"]["$ref"],
+            "#/definitions/Element"
+        );
+        assert_eq!(
+            consts("FieldWidget"),
+            [
+                "TextField",
+                "TextArea",
+                "NumberField",
+                "CheckBox",
+                "ComboBox",
+                "RadioGroup",
+                "DateField",
+                "DateTimeField"
+            ]
+        );
+        assert_eq!(keys(&definitions["CellDef"]), ["span", "newRow"]);
     }
 
     /// Scenario "Direction d'un split": only `horizontal` and `vertical`.

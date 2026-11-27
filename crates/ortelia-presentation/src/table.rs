@@ -24,7 +24,8 @@ use ortelia_model::value::Value;
 
 use crate::fold::{fold, fold_into};
 use crate::format::{Cell, Conventions, ValueFormat, default_align, default_width};
-use crate::labels::LabelLookup;
+use crate::labels::{LabelLookup, with_unit};
+use crate::nearest_presentation;
 use crate::session::{ColumnSession, SortSession, TableSession};
 
 /// The separator of the columns in the text of a row prepared for the filter: a word of the
@@ -133,10 +134,7 @@ impl TableView {
     ) -> TableView {
         let class = view.class;
         let conventions = Conventions::of(lookup.lang());
-        // The class itself, then its ancestors, nearest first.
-        let presentation = std::iter::once(class)
-            .chain(model.class(class).ancestors())
-            .find_map(|c| app.presentations.get(&c));
+        let presentation = nearest_presentation(app, model, class);
         let (defs, sort) = match presentation.and_then(|p| p.table.as_ref()) {
             Some(table) => (table.columns.clone(), table.sort.clone()),
             // Deduced from the model: the attributes, inherited ones first.
@@ -440,17 +438,8 @@ fn column(
 ) -> Column {
     let attribute = model.attribute(spec.attr);
     let attr_type = attribute.attr_type();
-    let label = lookup.attribute(class, spec.attr);
-    let header = match attribute.unit() {
-        Some(unit) => format!("{label} ({unit})"),
-        None => label,
-    };
-    let literals = match attr_type {
-        AttrType::Enum(id) => (0..model.enum_type(id).literals().len())
-            .map(|index| lookup.literal(id, index))
-            .collect(),
-        _ => Vec::new(),
-    };
+    let header = with_unit(lookup.attribute(class, spec.attr), attribute.unit());
+    let literals = lookup.literals(attr_type);
     Column {
         attr: spec.attr,
         attr_type,
@@ -600,6 +589,12 @@ impl<'a> TableRef<'a> {
             .set(self.table.formatted_cells.get() + 1);
         let obj = self.table.base[position as usize];
         column.format.cell(self.store.get(obj, column.attr))
+    }
+
+    /// The object of the row `row` (shown); `None` past the last row.
+    pub fn object(&self, row: usize) -> Option<ObjectId> {
+        let &position = self.table.rows.get(row)?;
+        Some(self.table.base[position as usize])
     }
 
     /// The text of the filter.

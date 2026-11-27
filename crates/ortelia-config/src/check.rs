@@ -2,7 +2,7 @@
 //! of each source and the conflicts between sources, the presentations, the splits and views of
 //! the window, and the labels. Every error is reported, not only the first one.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ortelia_model::builder::{DataPath, PathSegment};
 use ortelia_model::fragment::Shape;
@@ -13,6 +13,7 @@ use crate::app::{
     MAX_WINDOW_SIZE, MIN_COLUMN_WIDTH, MIN_WINDOW_SIZE, PresentationDef, SortDef, SortOrder,
     SourceDef, SourceFormat, SplitDef, ViewDef, Widget, WindowDef,
 };
+use crate::form::{CheckedGrid, check_form, form_label_keys};
 use crate::labels::{Labels, check_labels};
 use crate::pattern::DatePattern;
 
@@ -75,10 +76,14 @@ impl TargetPath {
 }
 
 /// The presentation of a class, checked.
-#[derive(Debug, Clone, PartialEq, Eq)]
+// `PartialEq` without `Eq`: the weights of the columns of a form are `f32`.
+#[derive(Debug, Clone, PartialEq)]
 pub struct CheckedPresentation {
     /// `None`: the columns are deduced from the model.
     pub table: Option<CheckedTable>,
+    /// The grid of the form, every default resolved; `None`: the form is deduced from the
+    /// model.
+    pub form: Option<CheckedGrid>,
 }
 
 /// The table of a presentation, checked.
@@ -136,7 +141,14 @@ pub struct CheckedSplit {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CheckedView {
     Table(CheckedTableView),
-    Empty { id: String },
+    Empty {
+        id: String,
+    },
+    /// A view that shows one object of `class`, or of a subclass, in the form of the class.
+    Form {
+        id: String,
+        class: ClassId,
+    },
 }
 
 /// A view that shows the objects of a list in a table.
@@ -163,7 +175,7 @@ impl CheckedContent {
             .into_iter()
             .filter_map(|view| match view {
                 CheckedView::Table(table) => Some(table),
-                CheckedView::Empty { .. } => None,
+                CheckedView::Empty { .. } | CheckedView::Form { .. } => None,
             })
             .collect()
     }
@@ -184,7 +196,7 @@ impl CheckedView {
     pub fn id(&self) -> &str {
         match self {
             CheckedView::Table(table) => &table.id,
-            CheckedView::Empty { id } => id,
+            CheckedView::Empty { id } | CheckedView::Form { id, .. } => id,
         }
     }
 }
@@ -198,10 +210,13 @@ impl AppFile {
         let mut errors = Vec::new();
         let mut warnings = Vec::new();
         check_languages(&self.languages, &mut errors);
+        // A set: each key of each language is looked up in it.
+        let cited: HashSet<&str> = form_label_keys(&self.presentations).into_iter().collect();
         let labels = check_labels(
             &self.labels,
             &self.languages,
             model,
+            &cited,
             &mut errors,
             &mut warnings,
         );
@@ -517,8 +532,9 @@ fn check_split(
     })
 }
 
-/// Checks a view: a table has data, an empty view none. `None` if an error was found, or if the
-/// data of a table cannot be followed for lack of a root (an error already reported).
+/// Checks a view: a table has data, an empty view and a form none, and a form names a class of
+/// the model. `None` if an error was found, or if the data of a table cannot be followed for
+/// lack of a root (an error already reported).
 fn check_view(
     view: &ViewDef,
     model: &Model,
@@ -527,8 +543,19 @@ fn check_view(
 ) -> Option<CheckedView> {
     let id = view.id.clone();
     let checked = match (&view.widget, &view.data) {
+        (Widget::Empty(_) | Widget::Form(_), Some(_)) => Err(ConfigError::UnexpectedData {
+            view: id,
+            widget: view.widget.kind(),
+        }),
         (Widget::Empty(_), None) => Ok(CheckedView::Empty { id }),
-        (Widget::Empty(_), Some(_)) => Err(ConfigError::UnexpectedData { view: id }),
+        // An abstract class is accepted: the objects shown will have a concrete subclass.
+        (Widget::Form(form), None) => match model.class_id(&form.class) {
+            Some(class) => Ok(CheckedView::Form { id, class }),
+            None => Err(ConfigError::UnknownFormClass {
+                view: id,
+                class: form.class.clone(),
+            }),
+        },
         (Widget::Table(_), None) => Err(ConfigError::MissingData { view: id }),
         (Widget::Table(_), Some(data)) => {
             check_table_data(&id, data, model, root?).map(CheckedView::Table)
@@ -595,8 +622,12 @@ fn check_presentations(
             .table
             .as_ref()
             .and_then(|table| check_table(model, class, &table.columns, &table.sort, errors));
+        let form = def
+            .form
+            .as_ref()
+            .and_then(|form| check_form(model, class, form, errors));
         if presentations
-            .insert(class, CheckedPresentation { table })
+            .insert(class, CheckedPresentation { table, form })
             .is_some()
         {
             errors.push(ConfigError::DuplicatePresentation {

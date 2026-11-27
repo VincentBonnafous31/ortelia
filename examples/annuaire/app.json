@@ -1,6 +1,6 @@
 {
   "$schema": "../../schemas/app.schema.json",
-  "formatVersion": "0.5",
+  "formatVersion": "0.6",
   "id": "annuaire",
   "name": "Annuaire des personnes",
   "languages": ["fr", "en"],
@@ -10,6 +10,7 @@
       "lang": "fr",
       "entries": [
         { "key": "Personne", "text": "Personne" },
+        { "key": "Personne.identite", "text": "Identité" },
         { "key": "Personne.nom", "text": "Nom" },
         { "key": "Personne.prenom", "text": "Prénom" },
         { "key": "Personne.date_naissance", "text": "Né le" },
@@ -30,6 +31,7 @@
       "lang": "en",
       "entries": [
         { "key": "Personne", "text": "Person" },
+        { "key": "Personne.identite", "text": "Identity" },
         { "key": "Personne.nom", "text": "Last name" },
         { "key": "Personne.prenom", "text": "First name" },
         { "key": "Personne.date_naissance", "text": "Born" },
@@ -77,6 +79,25 @@
           { "path": "inscription" }
         ],
         "sort": [ { "path": "nom" }, { "path": "prenom" } ]
+      },
+      "form": {
+        "elements": [
+          { "_type_": "Group", "label": "Personne.identite", "elements": [
+              { "_type_": "Field", "path": "nom" },
+              { "_type_": "Field", "path": "prenom" },
+              { "_type_": "Field", "path": "date_naissance",
+                "widget": { "_type_": "DateField", "format": "d MMMM yyyy" } }
+          ] },
+          { "_type_": "Field", "path": "nombre_enfants" },
+          { "_type_": "Field", "path": "taille" },
+          { "_type_": "Field", "path": "contact_autorise" },
+          { "_type_": "Field", "path": "situation" },
+          { "_type_": "Field", "path": "inscription" },
+          { "_type_": "Separator" },
+          { "_type_": "Field", "path": "notes",
+            "labelCell": { "span": 2 }, "cell": { "newRow": true, "span": 2 },
+            "widget": { "_type_": "TextArea", "rows": 5 } }
+        ]
       }
     }
   ],
@@ -100,7 +121,7 @@
         {
           "_type_": "View",
           "id": "proprietes",
-          "widget": { "_type_": "Empty" }
+          "widget": { "_type_": "Form", "class": "Personne" }
         }
       ]
     }

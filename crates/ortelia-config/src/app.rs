@@ -5,10 +5,11 @@ use std::fmt;
 use ortelia_model::metamodel::without_position;
 use serde::{Deserialize, Serialize};
 
+use crate::form::{FormDef, TEXT_AREA_ROWS};
 use crate::pattern::PatternError;
 
 /// The version of the format of `app.json` that this version of Ortelia reads.
-pub const APP_FORMAT_VERSION: &str = "0.5";
+pub const APP_FORMAT_VERSION: &str = "0.6";
 
 /// The range of the width and the height of the window, in points.
 pub const MIN_WINDOW_SIZE: u32 = 200;
@@ -95,7 +96,8 @@ pub struct LabelEntry {
 }
 
 /// The presentation of a class: how its objects are shown.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+// `PartialEq` without `Eq`: the weights of the columns of a form are `f64`.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct PresentationDef {
@@ -106,6 +108,10 @@ pub struct PresentationDef {
     /// class, in the order of the model.
     #[serde(default)]
     pub table: Option<TableDef>,
+    /// The form of an object of the class. Without it, one field per attribute, in the order of
+    /// the model.
+    #[serde(default)]
+    pub form: Option<FormDef>,
 }
 
 /// The table of a class: its columns and its initial sort.
@@ -223,7 +229,7 @@ pub struct ViewDef {
     pub id: String,
     pub widget: Widget,
     /// The data shown: `/r1/…/rn`, containment references from the root, the last one a list.
-    /// Required by a table; an empty view has none.
+    /// Required by a table; an empty view and a form have none.
     #[serde(default)]
     pub data: Option<String>,
 }
@@ -269,6 +275,19 @@ pub enum Widget {
     Table(TableWidget),
     /// Nothing: the view only holds its place in the window.
     Empty(EmptyWidget),
+    /// The form of a class: the properties of one object, in read-only fields.
+    Form(FormWidget),
+}
+
+impl Widget {
+    /// The kind of the widget, for the messages: `table`, `empty`, `form`.
+    pub fn kind(&self) -> &'static str {
+        match self {
+            Widget::Table(_) => "table",
+            Widget::Empty(_) => "empty",
+            Widget::Form(_) => "form",
+        }
+    }
 }
 
 /// The options of a table proper to its view: none yet.
@@ -284,6 +303,17 @@ pub struct TableWidget {}
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct EmptyWidget {}
+
+/// The options of a form view.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct FormWidget {
+    /// The name of the class whose objects the form shows, abstract or not. The form is the one
+    /// of its presentation, or of its nearest super class that has one, or else one field per
+    /// attribute.
+    pub class: String,
+}
 
 /// The format of a source.
 // serde refuses any other value, and its error names it.
@@ -378,8 +408,11 @@ pub enum ConfigError {
     DataNotList { view: String, segment: String },
     /// A table view has no `data`.
     MissingData { view: String },
-    /// An empty view has `data`.
-    UnexpectedData { view: String },
+    /// A view whose widget shows no list has `data`; `widget` is the kind of the widget
+    /// (`empty`, `form`).
+    UnexpectedData { view: String, widget: &'static str },
+    /// A form view names no class of the model.
+    UnknownFormClass { view: String, class: String },
     /// A split has fewer than two children.
     SplitChildren { split: String, count: usize },
     /// A split does not declare one weight per child.
@@ -421,6 +454,52 @@ pub enum ConfigError {
     UnknownSortColumn { class: String, path: String },
     /// A column appears twice in the sort.
     DuplicateSort { class: String, path: String },
+    // The errors of a form name the element by its `location`: `form.elements[0].elements[2]`.
+    /// A field names no attribute of the class.
+    UnknownField {
+        class: String,
+        location: String,
+        path: String,
+    },
+    /// The widget of a field does not suit the type of its attribute.
+    WidgetMismatch {
+        class: String,
+        location: String,
+        path: String,
+        widget: &'static str,
+        attr_type: String,
+    },
+    /// The span of a cell is 0, or more than the number of columns of its grid.
+    SpanOutOfGrid {
+        class: String,
+        location: String,
+        span: usize,
+        columns: usize,
+    },
+    /// The grid of a form or a group declares no column.
+    NoGridColumn { class: String, location: String },
+    /// The weight of a column of a grid is not a finite number positive or zero; `index` counts
+    /// from 0.
+    GrowValue {
+        class: String,
+        location: String,
+        index: usize,
+    },
+    /// The number of lines of a text area is out of its range.
+    TextAreaRows {
+        class: String,
+        location: String,
+        rows: u32,
+    },
+    /// The format of a date field is not a valid pattern.
+    FieldPattern {
+        class: String,
+        location: String,
+        path: String,
+        pattern: String,
+        // Boxed: four texts and the error would make `ConfigError` too large to return by value.
+        error: Box<PatternError>,
+    },
     /// A group of labels is in a language not in `languages`.
     UndeclaredLabelLanguage { lang: String },
     /// Two groups of labels have the same language.
@@ -535,8 +614,14 @@ impl fmt::Display for ConfigError {
             ConfigError::MissingData { view } => {
                 write!(f, "view `{view}`: a table needs `data`, the list it shows")
             }
-            ConfigError::UnexpectedData { view } => {
-                write!(f, "view `{view}`: an empty view has no `data`")
+            ConfigError::UnexpectedData { view, widget } => {
+                write!(
+                    f,
+                    "view `{view}`: a view of widget `{widget}` has no `data`"
+                )
+            }
+            ConfigError::UnknownFormClass { view, class } => {
+                write!(f, "view `{view}`: no class `{class}` in the model")
             }
             ConfigError::SplitChildren { split, count } => write!(
                 f,
@@ -612,6 +697,71 @@ impl fmt::Display for ConfigError {
                     "presentation of `{class}`: `{path}` appears twice in the sort"
                 )
             }
+            ConfigError::UnknownField {
+                class,
+                location,
+                path,
+            } => write!(
+                f,
+                "presentation of `{class}`: {location}: field `{path}` is not an attribute of \
+                 `{class}`"
+            ),
+            ConfigError::WidgetMismatch {
+                class,
+                location,
+                path,
+                widget,
+                attr_type,
+            } => write!(
+                f,
+                "presentation of `{class}`: {location}: field `{path}`: widget `{widget}` cannot \
+                 show a value of type `{attr_type}`"
+            ),
+            ConfigError::SpanOutOfGrid {
+                class,
+                location,
+                span,
+                columns,
+            } => write!(
+                f,
+                "presentation of `{class}`: {location}: `span` {span} is out of the grid (1 to \
+                 {columns} columns)"
+            ),
+            ConfigError::NoGridColumn { class, location } => write!(
+                f,
+                "presentation of `{class}`: {location}: `columns` needs at least one column"
+            ),
+            ConfigError::GrowValue {
+                class,
+                location,
+                index,
+            } => write!(
+                f,
+                "presentation of `{class}`: {location}: `grow` of column {} of `columns` is not a \
+                 number positive or zero",
+                index + 1
+            ),
+            ConfigError::TextAreaRows {
+                class,
+                location,
+                rows,
+            } => write!(
+                f,
+                "presentation of `{class}`: {location}: `rows` {rows} is out of range ({} to {})",
+                TEXT_AREA_ROWS.start(),
+                TEXT_AREA_ROWS.end()
+            ),
+            ConfigError::FieldPattern {
+                class,
+                location,
+                path,
+                pattern,
+                error,
+            } => write!(
+                f,
+                "presentation of `{class}`: {location}: field `{path}`: invalid format \
+                 `{pattern}`: {error}"
+            ),
             ConfigError::UndeclaredLabelLanguage { lang } => {
                 write!(f, "labels: language `{lang}` is not in `languages`")
             }

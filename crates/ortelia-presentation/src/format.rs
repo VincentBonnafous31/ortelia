@@ -179,26 +179,35 @@ pub struct ValueFormat {
 }
 
 impl ValueFormat {
-    /// The cell of a value.
+    /// The cell of a value, on one line.
     pub fn cell(&self, value: Value<'_>) -> Cell {
         match value {
             Value::Unset => Cell::Empty,
             Value::Bool(b) => Cell::Check(b),
-            Value::Str(text) => Cell::Text(one_line(text)),
-            Value::Int(i) => Cell::Text(i.to_string()),
-            Value::Float(f) => Cell::Text(format_float(f, self.conventions)),
-            Value::Enum(index) => Cell::Text(
-                usize::try_from(index)
-                    .ok()
-                    .and_then(|i| self.literals.get(i))
-                    .cloned()
-                    .unwrap_or_default(),
-            ),
-            Value::Date(date) => Cell::Text(self.date_text(date, None)),
+            other => Cell::Text(self.text(other, false)),
+        }
+    }
+
+    /// The text of a value; with `keep_lines` false, a text on one line (each line break or
+    /// tab becomes a space), as in a cell of a table. Empty for an absent value and for a
+    /// boolean, which a check box shows.
+    pub fn text(&self, value: Value<'_>, keep_lines: bool) -> String {
+        match value {
+            Value::Unset | Value::Bool(_) => String::new(),
+            Value::Str(text) if keep_lines => text.to_owned(),
+            Value::Str(text) => one_line(text),
+            Value::Int(i) => i.to_string(),
+            Value::Float(f) => format_float(f, self.conventions),
+            Value::Enum(index) => usize::try_from(index)
+                .ok()
+                .and_then(|i| self.literals.get(i))
+                .cloned()
+                .unwrap_or_default(),
+            Value::Date(date) => self.date_text(date, None),
             Value::DateTime(instant) => {
                 // In UTC, whatever the time zone of the computer.
                 let civil = Offset::UTC.to_datetime(instant);
-                Cell::Text(self.date_text(civil.date(), Some(civil)))
+                self.date_text(civil.date(), Some(civil))
             }
         }
     }
@@ -338,6 +347,18 @@ mod tests {
         );
         assert_eq!(french().cell(Value::Str("a\r\nb\tc")), text("a b c"));
         assert_eq!(french().cell(Value::Str("Dupont")), text("Dupont"));
+    }
+
+    /// The text of a value, with its line breaks kept (a text area) or not.
+    #[test]
+    fn texts_that_keep_their_lines() {
+        let value = Value::Str("Ligne 1\nLigne 2");
+        assert_eq!(french().text(value, true), "Ligne 1\nLigne 2");
+        assert_eq!(french().text(value, false), "Ligne 1 Ligne 2");
+        // The other types are shown as in a cell; an absent value and a boolean have no text.
+        assert_eq!(french().text(Value::Float(1.68), true), "1,68");
+        assert_eq!(french().text(Value::Unset, true), "");
+        assert_eq!(french().text(Value::Bool(true), false), "");
     }
 
     /// Scenarios "Taille en français", "Taille en anglais" and "Grand entier".

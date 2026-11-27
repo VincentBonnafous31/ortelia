@@ -1,10 +1,12 @@
 //! The labels of `app.json`: checked against the model, then gathered in a lookup table.
 //!
 //! A key names a class (`Personne`), an attribute of a class (`Personne.nom`, inherited
-//! attributes included) or a literal of an enum (`SituationFamiliale.MARIE`). The lookup itself,
+//! attributes included) or a literal of an enum (`SituationFamiliale.MARIE`); a key cited by a
+//! form (title of a group, fixed text, label of a field) may be free (`Personne.identite`).
+//! The lookup itself,
 //! with the inheritance and the `#key#` of a missing label, belongs to the presentation layer.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use ortelia_model::metamodel::Model;
 
@@ -27,11 +29,13 @@ impl Labels {
 }
 
 /// Checks the groups of labels (errors: undeclared language, two groups of one language, a key
-/// twice in a group; warning: a key that names nothing), and builds the lookup table.
+/// twice in a group; warning: a key that names nothing and that no form cites), and builds the
+/// lookup table. `cited` are the keys cited by the forms, which may be free.
 pub(crate) fn check_labels(
     groups: &[LabelGroup],
     languages: &[String],
     model: &Model,
+    cited: &HashSet<&str>,
     errors: &mut Vec<ConfigError>,
     warnings: &mut Vec<ConfigWarning>,
 ) -> Labels {
@@ -58,7 +62,7 @@ pub(crate) fn check_labels(
         }
         let table = labels.by_lang.entry(group.lang.clone()).or_default();
         for entry in &group.entries {
-            if !names_something(model, &entry.key) {
+            if !names_something(model, &entry.key) && !cited.contains(&entry.key.as_str()) {
                 warnings.push(ConfigWarning::UnknownLabelKey {
                     lang: group.lang.clone(),
                     key: entry.key.clone(),

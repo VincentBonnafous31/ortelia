@@ -32,7 +32,7 @@ fn layout_of_the_directory() {
     assert_eq!(child_ids(root), ["personnes", "proprietes"]);
     assert_parts(root.parts(), &[0.65, 0.35]);
     assert!(matches!(state.view("personnes"), Some(ViewRef::Table(_))));
-    assert!(matches!(state.view("proprietes"), Some(ViewRef::Empty)));
+    assert!(matches!(state.view("proprietes"), Some(ViewRef::Form(_))));
     assert!(state.view("principal").is_none());
 }
 

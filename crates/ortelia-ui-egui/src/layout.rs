@@ -13,7 +13,7 @@ use egui_tiles::{
 };
 use ortelia_presentation::{AppState, Direction, Intent, LayoutNode, MainContent, ViewRef};
 
-use crate::table;
+use crate::{form, table};
 
 /// The margin of a view, on each side, in points: that of the central panel of egui, which has
 /// none around the tiles, so that they reach the edges of the window. The widgets of a view do
@@ -149,6 +149,8 @@ impl Behavior<Pane> for LayoutBehavior<'_> {
                         .into_iter()
                         .map(|intent| Intent::table(&pane.view, intent)),
                 ),
+                // A form emits no intent: its widgets cannot change a value.
+                Some(ViewRef::Form(view)) => form::draw_form_view(ui, view),
                 // An empty view draws nothing.
                 Some(ViewRef::Empty) | None => {}
             }

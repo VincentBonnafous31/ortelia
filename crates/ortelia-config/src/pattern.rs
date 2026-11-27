@@ -104,7 +104,7 @@ impl fmt::Display for PatternError {
             PatternError::UnknownField(run) => write!(f, "unknown field `{run}`"),
             PatternError::UnclosedQuote => f.write_str("unclosed quote"),
             PatternError::TimeInDate(run) => {
-                write!(f, "field `{run}` is a time, and the column is a date")
+                write!(f, "field `{run}` is a time, and the value is a date")
             }
         }
     }
