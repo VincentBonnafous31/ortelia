@@ -4,8 +4,9 @@
 use std::sync::Arc;
 
 use ortelia_config::{
-    AppFile, CheckedApp, ConfigError, ConfigWarning, Content, PatternError, SortOrder,
-    SourceFormat, TableWidget, ViewDef, Widget,
+    AppFile, CheckedApp, CheckedContent, CheckedView, ConfigError, ConfigWarning, Content,
+    Direction, EmptyWidget, PatternError, SortOrder, SourceFormat, SplitDef, TableWidget, ViewDef,
+    Widget,
 };
 use ortelia_model::builder::DataPath;
 use ortelia_model::fragment::Shape;
@@ -49,7 +50,7 @@ fn app_with(root: &str, data: &str, sources: &[(&str, &str)]) -> AppFile {
         })
         .collect();
     let text = format!(
-        r#"{{ "formatVersion": "0.4", "id": "test", "name": "Test", "languages": ["fr"],
+        r#"{{ "formatVersion": "0.5", "id": "test", "name": "Test", "languages": ["fr"],
              "model": {{ "files": ["m.model.json"], "root": "{root}" }},
              "sources": [ {} ],
              "window": {{ "content": {{ "_type_": "View", "id": "v",
@@ -71,7 +72,7 @@ fn parse_error(text: &str) -> String {
 
 /// A valid `app.json`, as a text to alter.
 const VALID: &str = r#"{
-  "formatVersion": "0.4",
+  "formatVersion": "0.5",
   "id": "a",
   "name": "A",
   "model": { "files": ["m.model.json"], "root": "Racine" },
@@ -127,16 +128,39 @@ fn application_of_the_directory() {
     assert!(target.shape.many);
     assert_eq!(target.data_path(&model).to_string(), "/annuaire/personnes");
 
-    // Languages, presentation of `Personne`, and a window that shows the persons in a table.
+    // Languages, presentation of `Personne`, and a window split between the persons in a
+    // table and an empty view.
     assert_eq!(app.languages, ["fr", "en"]);
     assert_eq!(app.presentations.len(), 1);
     assert_eq!(app.presentations[0].class, "Personne");
-    let Content::View(view) = &app.window.content;
-    assert_eq!(view.widget, Widget::Table(TableWidget {}));
-    assert_eq!(view.data, "/annuaire/personnes");
+    let Content::Split(split) = &app.window.content else {
+        panic!("a split: {:?}", app.window.content)
+    };
+    assert_eq!(
+        (split.id.as_str(), split.direction, split.weights.as_deref()),
+        ("principal", Direction::Horizontal, Some(&[65.0, 35.0][..]))
+    );
+    assert_eq!(
+        split.children,
+        [
+            Content::View(ViewDef {
+                id: "personnes".into(),
+                widget: Widget::Table(TableWidget {}),
+                data: Some("/annuaire/personnes".into())
+            }),
+            Content::View(ViewDef {
+                id: "proprietes".into(),
+                widget: Widget::Empty(EmptyWidget {}),
+                data: None
+            })
+        ]
+    );
     let personne = model.class_id("Personne").expect("Personne");
-    assert_eq!(checked.window.view.class, personne);
-    assert_eq!(checked.window.view.data, target.refs);
+    let views = checked.window.content.table_views();
+    assert_eq!(views.len(), 1);
+    assert_eq!(views[0].id, "personnes");
+    assert_eq!(views[0].class, personne);
+    assert_eq!(views[0].data, target.refs);
     let table = checked.presentations[&personne]
         .table
         .as_ref()
@@ -172,7 +196,7 @@ fn application_of_the_directory() {
     assert!(checked.warnings.is_empty(), "{:?}", checked.warnings);
 }
 
-// --- Format 0.4: languages, window, content, presentations, labels ---
+// --- Format 0.5: languages, window, content, presentations, labels ---
 
 /// `VALID` with `languages` replaced.
 fn with_languages(languages: &str) -> String {
@@ -299,21 +323,21 @@ fn table_view() {
         Content::View(ViewDef {
             id: "personnes".into(),
             widget: Widget::Table(TableWidget {}),
-            data: "/annuaire/personnes".into()
+            data: Some("/annuaire/personnes".into())
         })
     );
 }
 
-/// Scenario "Conteneur inconnu", and an unknown widget.
+/// Scenarios "Conteneur inconnu" and "Widget inconnu".
 #[test]
 fn unknown_container() {
-    let message = parse_error(&with_window(r#"{ "content": { "_type_": "Split" } }"#));
-    assert!(message.contains("Split"), "{message}");
+    let message = parse_error(&with_window(r#"{ "content": { "_type_": "Tabs" } }"#));
+    assert!(message.contains("Tabs"), "{message}");
     let message = parse_error(&with_window(&format!(
         r#"{{ "content": {} }}"#,
-        TABLE_CONTENT.replace(r#""Table""#, r#""Tree""#)
+        TABLE_CONTENT.replace(r#""Table""#, r#""Form""#)
     )));
-    assert!(message.contains("Tree"), "{message}");
+    assert!(message.contains("Form"), "{message}");
 }
 
 /// Unknown keys are refused in a view and in a table, despite the internal tag (design.md,
@@ -377,7 +401,298 @@ fn data_of_a_view() {
     let checked = app_with("Racine", "/forme/sommets", &[])
         .check(&compile(SMALL_MODEL))
         .expect("abstract traversed");
-    assert_eq!(checked.window.view.data.len(), 2);
+    assert_eq!(checked.window.content.table_views()[0].data.len(), 2);
+}
+
+// --- Splits and empty views ---
+
+const EMPTY_CONTENT: &str = r#"{ "_type_": "View", "id": "proprietes",
+    "widget": { "_type_": "Empty" } }"#;
+
+/// A split `principal`, horizontal, with the given extra keys (`"weights": [...], `) and
+/// children.
+fn split(extra: &str, children: &[&str]) -> String {
+    format!(
+        r#"{{ "_type_": "Split", "id": "principal", "direction": "horizontal", {extra}
+             "children": [ {} ] }}"#,
+        children.join(", ")
+    )
+}
+
+/// The application `VALID` whose window has the given content.
+fn with_content(content: &str) -> AppFile {
+    let text = with_window(&format!(r#"{{ "content": {content} }}"#));
+    AppFile::parse(&text).unwrap_or_else(|e| panic!("{e}\n{text}"))
+}
+
+/// The errors of the check of `VALID` whose window has the given content.
+fn content_errors(content: &str) -> Vec<ConfigError> {
+    check_errors(&with_content(content), &directory_model())
+}
+
+/// Scenario "Split de deux vues".
+#[test]
+fn split_of_two_views() {
+    let app = with_content(&split(
+        r#""weights": [65, 35],"#,
+        &[TABLE_CONTENT, EMPTY_CONTENT],
+    ));
+    let Content::Split(SplitDef {
+        id,
+        direction,
+        weights,
+        children,
+    }) = &app.window.content
+    else {
+        panic!("a split")
+    };
+    assert_eq!(
+        (id.as_str(), *direction, weights.as_deref()),
+        ("principal", Direction::Horizontal, Some(&[65.0, 35.0][..]))
+    );
+    let ids: Vec<&str> = children.iter().map(Content::id).collect();
+    assert_eq!(ids, ["personnes", "proprietes"]);
+
+    let checked = app.check(&directory_model()).expect("check");
+    let CheckedContent::Split(checked_split) = &checked.window.content else {
+        panic!("a checked split")
+    };
+    assert_eq!(checked_split.weights, [65.0, 35.0]);
+    let views: Vec<&str> = checked
+        .window
+        .content
+        .views()
+        .iter()
+        .map(|v| v.id())
+        .collect();
+    assert_eq!(views, ["personnes", "proprietes"]);
+    assert_eq!(
+        checked.window.content.views()[1],
+        &CheckedView::Empty {
+            id: "proprietes".into()
+        }
+    );
+}
+
+/// Scenario "Table sans données".
+#[test]
+fn table_without_data() {
+    let without_data = TABLE_CONTENT.replace(r#", "data": "/annuaire/personnes""#, "");
+    let errors = content_errors(&without_data);
+    assert_eq!(
+        errors,
+        [ConfigError::MissingData {
+            view: "personnes".into()
+        }]
+    );
+    let message = errors[0].to_string();
+    assert!(
+        message.contains("`personnes`") && message.contains("`data`"),
+        "{message}"
+    );
+}
+
+/// Scenario "Vue vide avec des données".
+#[test]
+fn empty_view_with_data() {
+    let with_data =
+        EMPTY_CONTENT.replace(r#""widget""#, r#""data": "/annuaire/personnes", "widget""#);
+    let errors = content_errors(&split("", &[TABLE_CONTENT, &with_data]));
+    assert_eq!(
+        errors,
+        [ConfigError::UnexpectedData {
+            view: "proprietes".into()
+        }]
+    );
+    let message = errors[0].to_string();
+    assert!(
+        message.contains("`proprietes`") && message.contains("`data`"),
+        "{message}"
+    );
+}
+
+/// Scenario "Split d'un seul enfant", and a split without children.
+#[test]
+fn split_with_one_child() {
+    let errors = content_errors(&split("", &[TABLE_CONTENT]));
+    assert_eq!(
+        errors,
+        [ConfigError::SplitChildren {
+            split: "principal".into(),
+            count: 1
+        }]
+    );
+    let message = errors[0].to_string();
+    assert!(
+        message.contains("`principal`") && message.contains("`children`"),
+        "{message}"
+    );
+    assert_eq!(
+        content_errors(&split("", &[])),
+        [ConfigError::SplitChildren {
+            split: "principal".into(),
+            count: 0
+        }]
+    );
+}
+
+/// Scenario "Direction inconnue", and a missing direction.
+#[test]
+fn unknown_direction() {
+    let diagonal = split("", &[TABLE_CONTENT, EMPTY_CONTENT]).replace("horizontal", "diagonal");
+    let message = parse_error(&with_window(&format!(r#"{{ "content": {diagonal} }}"#)));
+    assert!(message.contains("diagonal"), "{message}");
+    let missing =
+        split("", &[TABLE_CONTENT, EMPTY_CONTENT]).replace(r#""direction": "horizontal","#, "");
+    let message = parse_error(&with_window(&format!(r#"{{ "content": {missing} }}"#)));
+    assert!(message.contains("`direction`"), "{message}");
+}
+
+/// Scenario "Nombre de poids faux".
+#[test]
+fn wrong_weight_count() {
+    let errors = content_errors(&split(
+        r#""weights": [50, 30, 20],"#,
+        &[TABLE_CONTENT, EMPTY_CONTENT],
+    ));
+    assert_eq!(
+        errors,
+        [ConfigError::SplitWeightCount {
+            split: "principal".into(),
+            children: 2,
+            weights: 3
+        }]
+    );
+    let message = errors[0].to_string();
+    assert!(
+        message.contains("`principal`") && message.contains("`weights`"),
+        "{message}"
+    );
+}
+
+/// Scenario "Poids nul", and a negative weight.
+#[test]
+fn zero_weight() {
+    let errors = content_errors(&split(
+        r#""weights": [100, 0],"#,
+        &[TABLE_CONTENT, EMPTY_CONTENT],
+    ));
+    assert_eq!(
+        errors,
+        [ConfigError::SplitWeightValue {
+            split: "principal".into(),
+            index: 1
+        }]
+    );
+    let message = errors[0].to_string();
+    assert!(
+        message.contains("`principal`") && message.contains("`weights`"),
+        "{message}"
+    );
+    assert_eq!(
+        content_errors(&split(
+            r#""weights": [-1, 2],"#,
+            &[TABLE_CONTENT, EMPTY_CONTENT]
+        )),
+        [ConfigError::SplitWeightValue {
+            split: "principal".into(),
+            index: 0
+        }]
+    );
+}
+
+/// Scenario "Poids absents": equal weights.
+#[test]
+fn split_without_weights() {
+    let checked = with_content(&split("", &[TABLE_CONTENT, EMPTY_CONTENT]))
+        .check(&directory_model())
+        .expect("check");
+    let CheckedContent::Split(split) = &checked.window.content else {
+        panic!("a split")
+    };
+    assert_eq!(split.weights, [1.0, 1.0]);
+}
+
+/// Scenario "Deux vues de même identifiant", at two depths.
+#[test]
+fn two_views_with_the_same_identifier() {
+    let errors = content_errors(&split("", &[TABLE_CONTENT, TABLE_CONTENT]));
+    assert_eq!(
+        errors,
+        [ConfigError::DuplicateContentId {
+            id: "personnes".into()
+        }]
+    );
+    assert!(
+        errors[0].to_string().contains("`personnes`"),
+        "{}",
+        errors[0]
+    );
+    let inner = split("", &[EMPTY_CONTENT, TABLE_CONTENT]).replace("principal", "droite");
+    assert_eq!(
+        content_errors(&split("", &[TABLE_CONTENT, &inner])),
+        [ConfigError::DuplicateContentId {
+            id: "personnes".into()
+        }]
+    );
+}
+
+/// Scenario "Une vue et un split de même identifiant".
+#[test]
+fn view_and_split_with_the_same_identifier() {
+    let view = TABLE_CONTENT.replace(r#""id": "personnes""#, r#""id": "principal""#);
+    let errors = content_errors(&split("", &[&view, EMPTY_CONTENT]));
+    assert_eq!(
+        errors,
+        [ConfigError::DuplicateContentId {
+            id: "principal".into()
+        }]
+    );
+    assert!(
+        errors[0].to_string().contains("`principal`"),
+        "{}",
+        errors[0]
+    );
+}
+
+/// Scenario "Vue table dans un split imbriqué", with the errors of the whole tree gathered.
+#[test]
+fn table_view_in_a_nested_split() {
+    let wrong = |id: &str, data: &str| {
+        TABLE_CONTENT
+            .replace(r#""id": "personnes""#, &format!(r#""id": "{id}""#))
+            .replace("/annuaire/personnes", data)
+    };
+    let inner = split("", &[&wrong("b", "/annuaire/persones"), EMPTY_CONTENT])
+        .replace("principal", "droite")
+        .replace("horizontal", "vertical");
+    let errors = content_errors(&split(
+        r#""weights": [1, 0],"#,
+        &[&wrong("a", "/annuaire"), &inner],
+    ));
+    assert_eq!(
+        errors,
+        [
+            ConfigError::SplitWeightValue {
+                split: "principal".into(),
+                index: 1
+            },
+            ConfigError::DataNotList {
+                view: "a".into(),
+                segment: "annuaire".into()
+            },
+            ConfigError::UnknownDataSegment {
+                view: "b".into(),
+                segment: "persones".into(),
+                class: "Annuaire".into()
+            }
+        ]
+    );
+    let message = errors[2].to_string();
+    assert!(
+        message.contains("`b`") && message.contains("`persones`"),
+        "{message}"
+    );
 }
 
 /// `VALID` with the given presentations.
@@ -866,7 +1181,7 @@ fn unknown_source_format() {
 /// Malformed JSON, and a value of the wrong type.
 #[test]
 fn malformed_file() {
-    let error = AppFile::parse(r#"{ "formatVersion": "0.4", "id": "#).expect_err("truncated");
+    let error = AppFile::parse(r#"{ "formatVersion": "0.5", "id": "#).expect_err("truncated");
     assert!(
         matches!(error, ConfigError::Syntax { line: 1, .. }),
         "{error}"
@@ -878,16 +1193,16 @@ fn malformed_file() {
 /// Scenario "Ancienne version".
 #[test]
 fn old_version() {
-    let error = AppFile::parse(&VALID.replace("0.4", "0.3")).expect_err("0.3");
+    let error = AppFile::parse(&VALID.replace("0.5", "0.4")).expect_err("0.4");
     assert_eq!(
         error,
         ConfigError::Version {
-            found: "0.3".into()
+            found: "0.4".into()
         }
     );
     let message = error.to_string();
     assert!(
-        message.contains("`0.3`") && message.contains("`0.4`"),
+        message.contains("`0.4`") && message.contains("`0.5`"),
         "{message}"
     );
 }

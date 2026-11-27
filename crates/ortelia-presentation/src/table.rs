@@ -14,7 +14,8 @@
 use std::cmp::Ordering;
 
 use ortelia_config::{
-    Align, CheckedApp, CheckedColumn, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, SortOrder,
+    Align, CheckedApp, CheckedColumn, CheckedTableView, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH,
+    SortOrder,
 };
 use ortelia_model::document::Document;
 use ortelia_model::metamodel::{AttrId, AttrType, ClassId, Model, RefId};
@@ -121,11 +122,15 @@ pub struct TableView {
 }
 
 impl TableView {
-    /// The table of the view of the window of `app`: the columns of the presentation of the
+    /// The table of the table view `view` of `app`: the columns of the presentation of the
     /// class shown (or of its nearest super class that has one), or else its attributes. The
     /// labels are looked up once, here.
-    pub fn new(app: &CheckedApp, model: &Model, lookup: &mut LabelLookup<'_>) -> TableView {
-        let view = &app.window.view;
+    pub fn new(
+        app: &CheckedApp,
+        view: &CheckedTableView,
+        model: &Model,
+        lookup: &mut LabelLookup<'_>,
+    ) -> TableView {
         let class = view.class;
         let conventions = Conventions::of(lookup.lang());
         // The class itself, then its ancestors, nearest first.

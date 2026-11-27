@@ -1,13 +1,14 @@
 //! The drawing of a table view: the filter bar, the headers (sort, drag and drop), the cells.
 //!
 //! Drawing only: the texts, the order and the widths come from the presentation, and every
-//! interaction becomes an intent, returned to the caller.
+//! interaction becomes an intent of the table, returned to the caller, which addresses it to
+//! the view of the table.
 
 use egui::{Align2, Id, Layout, Role, Sense, WidgetInfo};
 use egui_extras::{Column, TableBuilder};
 use ortelia_presentation::{
-    Align, CLEAR_FILTER, Cell, FILTER_HINT, Intent, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH,
-    TableIntent, TableRef,
+    Align, CLEAR_FILTER, Cell, FILTER_HINT, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH, TableIntent,
+    TableRef,
 };
 
 /// The height of the header and of a row, in points.
@@ -16,12 +17,17 @@ const ROW_HEIGHT: f32 = 20.0;
 /// A width change below this is a rounding of egui, not a resize.
 const WIDTH_TOLERANCE: f32 = 0.5;
 
-/// The payload of the drag of a header: the position of its column.
+/// The payload of the drag of a header: its table, by its egui identifier, and the position of
+/// its column. The payload is shared by the whole window: a header dropped on a header of
+/// another table moves nothing.
 #[derive(Debug, Clone, Copy)]
-struct ColumnDrag(usize);
+struct ColumnDrag {
+    table: Id,
+    column: usize,
+}
 
 /// Draws a table view: its filter bar, then the table.
-pub(crate) fn draw_table_view(ui: &mut egui::Ui, table: TableRef<'_>) -> Vec<Intent> {
+pub(crate) fn draw_table_view(ui: &mut egui::Ui, table: TableRef<'_>) -> Vec<TableIntent> {
     let mut intents = draw_filter_bar(ui, table);
     ui.add_space(4.0);
     // Columns wider than the window scroll sideways; the table scrolls its rows itself.
@@ -30,7 +36,7 @@ pub(crate) fn draw_table_view(ui: &mut egui::Ui, table: TableRef<'_>) -> Vec<Int
 }
 
 /// The field of the filter, its clear button, and the counter of the rows on the right.
-fn draw_filter_bar(ui: &mut egui::Ui, table: TableRef<'_>) -> Vec<Intent> {
+fn draw_filter_bar(ui: &mut egui::Ui, table: TableRef<'_>) -> Vec<TableIntent> {
     let mut intents = Vec::new();
     ui.horizontal(|ui| {
         // The text of the presentation, edited in a copy: the change goes back as an intent.
@@ -41,10 +47,10 @@ fn draw_filter_bar(ui: &mut egui::Ui, table: TableRef<'_>) -> Vec<Intent> {
                 .desired_width(240.0),
         );
         if response.changed() {
-            intents.push(Intent::Table(TableIntent::SetFilter(text)));
+            intents.push(TableIntent::SetFilter(text));
         }
         if !table.filter().is_empty() && ui.button("✖").on_hover_text(CLEAR_FILTER).clicked() {
-            intents.push(Intent::Table(TableIntent::SetFilter(String::new())));
+            intents.push(TableIntent::SetFilter(String::new()));
         }
         ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
             ui.label(table.counter());
@@ -54,7 +60,7 @@ fn draw_filter_bar(ui: &mut egui::Ui, table: TableRef<'_>) -> Vec<Intent> {
 }
 
 /// Draws the table: only the visible rows are asked of the presentation.
-fn draw_table(ui: &mut egui::Ui, table: TableRef<'_>) -> Vec<Intent> {
+fn draw_table(ui: &mut egui::Ui, table: TableRef<'_>) -> Vec<TableIntent> {
     // The resizes of a frame use the positions of the columns before a move of the same frame:
     // they are dispatched first, the intents of the headers (sort, move) after them.
     let mut intents = Vec::new();
@@ -91,14 +97,14 @@ fn draw_table(ui: &mut egui::Ui, table: TableRef<'_>) -> Vec<Intent> {
     builder
         .header(HEADER_HEIGHT, |mut header| {
             for column in 0..columns.len() {
-                header.col(|ui| header_intents.extend(draw_header(ui, table, column)));
+                header.col(|ui| header_intents.extend(draw_header(ui, table, id, column)));
             }
         })
         .body(|body| {
             // The widths after a resize by the user, compared to those of the presentation.
             for (column, (&width, def)) in body.widths().iter().zip(columns).enumerate() {
                 if (width - def.width()).abs() > WIDTH_TOLERANCE {
-                    intents.push(Intent::Table(TableIntent::ResizeColumn { column, width }));
+                    intents.push(TableIntent::ResizeColumn { column, width });
                 }
             }
             body.rows(ROW_HEIGHT, table.row_count(), |mut row| {
@@ -112,8 +118,9 @@ fn draw_table(ui: &mut egui::Ui, table: TableRef<'_>) -> Vec<Intent> {
     intents
 }
 
-/// A header: its label and sort indicator; a click sorts, a drag moves the column.
-fn draw_header(ui: &mut egui::Ui, table: TableRef<'_>, column: usize) -> Vec<Intent> {
+/// A header of the table `table`, of egui identifier `id`: its label and sort indicator; a
+/// click sorts, a drag moves the column.
+fn draw_header(ui: &mut egui::Ui, table: TableRef<'_>, id: Id, column: usize) -> Vec<TableIntent> {
     let mut intents = Vec::new();
     let header = table.columns()[column].header();
     let indicator = table.sort_indicator(column);
@@ -149,17 +156,18 @@ fn draw_header(ui: &mut egui::Ui, table: TableRef<'_>, column: usize) -> Vec<Int
     }
 
     if response.clicked() {
-        intents.push(Intent::Table(TableIntent::SortBy {
+        intents.push(TableIntent::SortBy {
             column,
             add: ui.input(|i| i.modifiers.shift),
-        }));
+        });
     }
-    response.dnd_set_drag_payload(ColumnDrag(column));
-    // The column dragged takes the place of the one it is dropped on.
+    response.dnd_set_drag_payload(ColumnDrag { table: id, column });
+    // The column dragged takes the place of the one it is dropped on, in the same table.
+    let moved = |dragged: &ColumnDrag| dragged.table == id && dragged.column != column;
     if let Some(dragged) = response.dnd_hover_payload::<ColumnDrag>()
-        && dragged.0 != column
+        && moved(&dragged)
     {
-        let x = if dragged.0 > column {
+        let x = if dragged.column > column {
             rect.left()
         } else {
             rect.right()
@@ -169,12 +177,12 @@ fn draw_header(ui: &mut egui::Ui, table: TableRef<'_>, column: usize) -> Vec<Int
             .vline(x, rect.y_range(), egui::Stroke::new(2.0, stroke.color));
     }
     if let Some(dragged) = response.dnd_release_payload::<ColumnDrag>()
-        && dragged.0 != column
+        && moved(&dragged)
     {
-        intents.push(Intent::Table(TableIntent::MoveColumn {
-            from: dragged.0,
+        intents.push(TableIntent::MoveColumn {
+            from: dragged.column,
             to: column,
-        }));
+        });
     }
     intents
 }

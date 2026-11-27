@@ -21,7 +21,7 @@ fn table(context: &AppContext) -> TableView {
 fn table_of(app: &CheckedApp, context: &AppContext) -> TableView {
     let model = context.document().model();
     let mut lookup = LabelLookup::new(&app.labels, model, &app.languages[0]);
-    let mut table = TableView::new(app, model, &mut lookup);
+    let mut table = TableView::new(app, app.window.content.table_views()[0], model, &mut lookup);
     table.prepare(context.document());
     table
 }
@@ -109,7 +109,7 @@ fn persons_of_the_directory() {
 fn configured_columns() {
     let context = directory();
     let mut app = context.app().clone();
-    let personne = app.window.view.class;
+    let personne = app.window.content.table_views()[0].class;
     let table_def = app
         .presentations
         .get_mut(&personne)
@@ -189,7 +189,7 @@ fn inherited_app(presentations: &str, labels: &str) -> (Model, CheckedApp) {
     let model =
         Model::compile(&[ModelFile::parse(INHERITED_MODEL).expect("parse")]).expect("compile");
     let text = format!(
-        r#"{{ "formatVersion": "0.4", "id": "a", "name": "A", "languages": ["fr"],
+        r#"{{ "formatVersion": "0.5", "id": "a", "name": "A", "languages": ["fr"],
              "labels": [ {{ "lang": "fr", "entries": {labels} }} ],
              "model": {{ "files": [], "root": "Racine" }},
              "presentations": {presentations},
@@ -214,7 +214,12 @@ fn inherited_presentation() {
              { "key": "Employe.prenom", "text": "Prénom d'usage" } ]"#,
     );
     let mut lookup = LabelLookup::new(&app.labels, &model, "fr");
-    let table = TableView::new(&app, &model, &mut lookup);
+    let table = TableView::new(
+        &app,
+        app.window.content.table_views()[0],
+        &model,
+        &mut lookup,
+    );
     assert_eq!(column_names(&table, &model), ["prenom"]);
     assert_eq!(table.columns[0].header, "Prénom d'usage");
     assert!(lookup.missing().is_empty());
@@ -226,7 +231,12 @@ fn presentation_without_table() {
     let _lock = lock_log_tests();
     let (model, app) = inherited_app(r#"[ { "class": "Employe" } ]"#, "[]");
     let mut lookup = LabelLookup::new(&app.labels, &model, "fr");
-    let table = TableView::new(&app, &model, &mut lookup);
+    let table = TableView::new(
+        &app,
+        app.window.content.table_views()[0],
+        &model,
+        &mut lookup,
+    );
     assert_eq!(column_names(&table, &model), ["nom", "prenom", "matricule"]);
     assert_eq!(table.columns[2].header, "#Employe.matricule#");
 }
@@ -652,7 +662,7 @@ fn restored(context: &AppContext, saved: &TableSession) -> TableView {
     let model = context.document().model();
     let app = context.app();
     let mut lookup = LabelLookup::new(&app.labels, model, &app.languages[0]);
-    let mut table = TableView::new(app, model, &mut lookup);
+    let mut table = TableView::new(app, app.window.content.table_views()[0], model, &mut lookup);
     table.restore(saved, model);
     table.prepare(context.document());
     table

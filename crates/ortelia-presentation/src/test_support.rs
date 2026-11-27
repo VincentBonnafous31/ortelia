@@ -7,7 +7,7 @@ use std::sync::{Mutex, MutexGuard};
 use ortelia_service::app::AppContext;
 use tempfile::TempDir;
 
-use crate::{AppState, MainContent, TableRef};
+use crate::{AppState, LayoutNode, MainContent, SplitNode, TableRef, ViewRef};
 
 /// `tracing` caches, per call site, whether a subscriber is interested: a test without
 /// subscriber that reaches "missing label" first could hide the event from the test that
@@ -37,12 +37,31 @@ pub fn open_example() -> AppState {
     state
 }
 
-/// The table of the window of an open application.
+/// The layout of the window of an open application.
+pub fn layout(state: &AppState) -> &LayoutNode {
+    let MainContent::Layout(layout) = state.content() else {
+        panic!("no application")
+    };
+    layout
+}
+
+/// The first table of the window of an open application.
 pub fn table(state: &AppState) -> TableRef<'_> {
-    match state.content() {
-        MainContent::Table(table) => table,
-        MainContent::Nothing => panic!("no table"),
-    }
+    layout(state)
+        .views()
+        .into_iter()
+        .find_map(|view| match state.view(view.id()) {
+            Some(ViewRef::Table(table)) => Some(table),
+            _ => None,
+        })
+        .expect("a table view")
+}
+
+/// The split `id` of the window of an open application.
+pub fn split<'a>(state: &'a AppState, id: &str) -> &'a SplitNode {
+    layout(state)
+        .split(id)
+        .unwrap_or_else(|| panic!("no split {id}"))
 }
 
 /// The application of `examples/annuaire`.
@@ -70,6 +89,55 @@ pub fn directory_with(app: &str, persons: &str) -> TempDir {
         ),
         ("personnes.json", persons),
     ])
+}
+
+/// The directory application in a temporary folder, whose window has another content, given
+/// as JSON: other splits and views of the persons.
+pub fn directory_with_content(content: &str) -> TempDir {
+    let mut app: serde_json::Value =
+        serde_json::from_str(&example("annuaire/app.json")).expect("app.json");
+    app["window"]["content"] = serde_json::from_str(content).expect("content");
+    directory_with(
+        &serde_json::to_string_pretty(&app).expect("JSON"),
+        &example("annuaire/personnes.json"),
+    )
+}
+
+/// A view of the persons in a table, as JSON.
+pub fn table_json(id: &str) -> String {
+    format!(
+        r#"{{ "_type_": "View", "id": "{id}", "widget": {{ "_type_": "Table" }},
+             "data": "/annuaire/personnes" }}"#
+    )
+}
+
+/// An empty view, as JSON.
+pub fn empty_json(id: &str) -> String {
+    format!(r#"{{ "_type_": "View", "id": "{id}", "widget": {{ "_type_": "Empty" }} }}"#)
+}
+
+/// A split, as JSON: `weights` is `""` or `"\"weights\": [...],"`.
+pub fn split_json(id: &str, direction: &str, weights: &str, children: &[String]) -> String {
+    format!(
+        r#"{{ "_type_": "Split", "id": "{id}", "direction": "{direction}", {weights}
+             "children": [ {} ] }}"#,
+        children.join(", ")
+    )
+}
+
+/// The shares `parts` are `expected`, to a millionth.
+pub fn assert_parts(parts: &[f32], expected: &[f32]) {
+    assert_eq!(parts.len(), expected.len(), "{parts:?}");
+    for (part, expected) in parts.iter().zip(expected) {
+        assert!((part - expected).abs() < 1e-6, "{parts:?} != {expected:?}");
+    }
+}
+
+/// The state of an application of `dir`, without session state, prepared.
+pub fn open_dir(dir: &TempDir) -> AppState {
+    let mut state = AppState::open(&dir.path().join("app.json"));
+    state.prepare();
+    state
 }
 
 /// `count` persons, numbered, as the text of a `personnes.json`.

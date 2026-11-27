@@ -1,6 +1,7 @@
 //! The session state of an application: the layout chosen by the user (size of the window,
-//! order and widths of the columns, sort, filter), written next to its `app.json` when the
-//! window closes and restored at the next opening. `app.json` itself is never written.
+//! order and widths of the columns, sort, filter, shares of the splits), written next to its
+//! `app.json` when the window closes and restored at the next opening. `app.json` itself is
+//! never written.
 //!
 //! This module holds the format of the file (serde types), its path, and its reading and
 //! writing ([`load`], [`save`]): the only inputs and outputs. What goes in the file is computed
@@ -32,6 +33,10 @@ pub struct SessionFile {
     pub window: Option<WindowSession>,
     #[serde(default)]
     pub views: Vec<ViewSession>,
+    /// Missing in the files written before the splits: the version of the format did not
+    /// change, the key being new and optional.
+    #[serde(default)]
+    pub containers: Vec<ContainerSession>,
 }
 
 /// The size of the window, in points. A missing or `null` value is ignored.
@@ -40,6 +45,24 @@ pub struct SessionFile {
 pub struct WindowSession {
     pub width: Option<f32>,
     pub height: Option<f32>,
+}
+
+/// A container of the window, named by its identifier. Each kind of container has its own key
+/// (`split` today; tab stacks later), like the widgets of a view.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ContainerSession {
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub split: Option<SplitSession>,
+}
+
+/// The shares of the children of a split, in order. Written adding up to 1; read as weights,
+/// made to add up to 1, and ignored if they are not one per child, each strictly positive.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SplitSession {
+    pub weights: Vec<f32>,
 }
 
 /// A view, named by its identifier. Each kind of widget has its own key (`table` today; a form

@@ -60,7 +60,7 @@ fn app_json(model: &str, root: &str, sources: &[(&str, &str, &str)]) -> String {
         _ => "/annuaire/personnes",
     };
     format!(
-        r#"{{ "formatVersion": "0.4", "id": "test", "name": "Test", "languages": ["fr"],
+        r#"{{ "formatVersion": "0.5", "id": "test", "name": "Test", "languages": ["fr"],
              "model": {{ "files": ["{model}"], "root": "{root}" }},
              "sources": [ {} ],
              "window": {{ "content": {{ "_type_": "View", "id": "v",
@@ -213,7 +213,7 @@ fn error_in_app_json() {
     let _lock = lock();
     let model = example("annuaire/annuaire.model.json");
     for app in [
-        "{ \"formatVersion\": \"0.4\" ".to_owned(),
+        "{ \"formatVersion\": \"0.5\" ".to_owned(),
         app_json("annuaire.model.json", "Racinne", &[]),
     ] {
         let dir = folder(&[("app.json", &app), ("annuaire.model.json", &model)]);

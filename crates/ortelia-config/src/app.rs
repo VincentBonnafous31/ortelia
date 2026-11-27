@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use crate::pattern::PatternError;
 
 /// The version of the format of `app.json` that this version of Ortelia reads.
-pub const APP_FORMAT_VERSION: &str = "0.4";
+pub const APP_FORMAT_VERSION: &str = "0.5";
 
 /// The range of the width and the height of the window, in points.
 pub const MIN_WINDOW_SIZE: u32 = 200;
@@ -22,7 +22,7 @@ pub const MAX_COLUMN_WIDTH: u32 = 2_000;
 // Like the model file, it refuses a misspelt key (`deny_unknown_fields`), and
 // `rename_all = "camelCase"` maps `formatVersion` to `format_version`. Plain comments, not doc
 // comments: those become the descriptions of the JSON Schema, shown by text editors.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct AppFile {
@@ -172,7 +172,7 @@ pub enum SortOrder {
 }
 
 /// The main window.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct WindowDef {
@@ -188,17 +188,30 @@ pub struct WindowDef {
     pub content: Content,
 }
 
-/// The content of a window, chosen by `_type_`.
+/// The content of a window, or a child of a split, chosen by `_type_`.
 //
 // An internally tagged enum: serde reads `_type_` and gives the other keys to the variant, like
-// `@JsonTypeInfo(use = NAME, property = "_type_")` in Jackson. Containers (`Split`, tab stacks)
-// will be other variants.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+// `@JsonTypeInfo(use = NAME, property = "_type_")` in Jackson. Tab stacks will be another
+// variant. `PartialEq` without `Eq`, like every type that holds weights: `f64` is not `Eq`
+// (NaN is not equal to itself).
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(tag = "_type_", deny_unknown_fields)]
 pub enum Content {
     /// A view: a widget that shows the data of a path.
     View(ViewDef),
+    /// A split: children side by side, or one above the other, each with a share of the space.
+    Split(SplitDef),
+}
+
+impl Content {
+    /// The identifier of the view or of the split.
+    pub fn id(&self) -> &str {
+        match self {
+            Content::View(view) => &view.id,
+            Content::Split(split) => &split.id,
+        }
+    }
 }
 
 /// A view: a widget that shows the data of a path.
@@ -206,11 +219,45 @@ pub enum Content {
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct ViewDef {
-    /// The identifier of the view.
+    /// The identifier of the view, unique among the views and splits of the window.
     pub id: String,
     pub widget: Widget,
     /// The data shown: `/r1/…/rn`, containment references from the root, the last one a list.
-    pub data: String,
+    /// Required by a table; an empty view has none.
+    #[serde(default)]
+    pub data: Option<String>,
+}
+
+/// A split: its children side by side, or one above the other. The user moves the separators;
+/// the shares are kept in the session state.
+//
+// `children` holds `Content`, which may be a `SplitDef` again: the type is recursive through
+// the `Vec`, which stores its items on the heap, like a `List<Content>` field in Java. No `Box`
+// is needed.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct SplitDef {
+    /// The identifier of the split, unique among the views and splits of the window.
+    pub id: String,
+    pub direction: Direction,
+    /// One weight per child, each strictly positive: a child gets its weight divided by the sum
+    /// of the weights (`[65, 35]`: 65 % and 35 %). By default, equal shares.
+    #[serde(default)]
+    pub weights: Option<Vec<f64>>,
+    /// At least two children: views or splits.
+    pub children: Vec<Content>,
+}
+
+/// How the children of a split are laid out.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[serde(rename_all = "lowercase")]
+pub enum Direction {
+    /// Side by side, from left to right.
+    Horizontal,
+    /// One above the other, from top to bottom.
+    Vertical,
 }
 
 /// The widget of a view, chosen by `_type_`.
@@ -220,6 +267,8 @@ pub struct ViewDef {
 pub enum Widget {
     /// A table of the objects of a list, presented as their class says.
     Table(TableWidget),
+    /// Nothing: the view only holds its place in the window.
+    Empty(EmptyWidget),
 }
 
 /// The options of a table proper to its view: none yet.
@@ -227,6 +276,14 @@ pub enum Widget {
 #[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
 #[serde(deny_unknown_fields)]
 pub struct TableWidget {}
+
+/// The options of an empty view: none.
+// A struct rather than a unit variant, like `TableWidget`: `deny_unknown_fields` then refuses
+// any other key.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[cfg_attr(feature = "json-schema", derive(schemars::JsonSchema))]
+#[serde(deny_unknown_fields)]
+pub struct EmptyWidget {}
 
 /// The format of a source.
 // serde refuses any other value, and its error names it.
@@ -319,6 +376,22 @@ pub enum ConfigError {
     },
     /// The last segment of the data of a view is not a list.
     DataNotList { view: String, segment: String },
+    /// A table view has no `data`.
+    MissingData { view: String },
+    /// An empty view has `data`.
+    UnexpectedData { view: String },
+    /// A split has fewer than two children.
+    SplitChildren { split: String, count: usize },
+    /// A split does not declare one weight per child.
+    SplitWeightCount {
+        split: String,
+        children: usize,
+        weights: usize,
+    },
+    /// A weight of a split is not a finite number strictly positive; `index` counts from 0.
+    SplitWeightValue { split: String, index: usize },
+    /// Two views or splits of the window have the same identifier.
+    DuplicateContentId { id: String },
     /// A presentation names no class of the model.
     UnknownPresentationClass { class: String },
     /// Two presentations name the same class.
@@ -459,6 +532,34 @@ impl fmt::Display for ConfigError {
             ConfigError::DataNotList { view, segment } => {
                 write!(f, "view `{view}`: `{segment}` is not a list")
             }
+            ConfigError::MissingData { view } => {
+                write!(f, "view `{view}`: a table needs `data`, the list it shows")
+            }
+            ConfigError::UnexpectedData { view } => {
+                write!(f, "view `{view}`: an empty view has no `data`")
+            }
+            ConfigError::SplitChildren { split, count } => write!(
+                f,
+                "split `{split}`: `children` needs at least two views or splits (it has {count})"
+            ),
+            ConfigError::SplitWeightCount {
+                split,
+                children,
+                weights,
+            } => write!(
+                f,
+                "split `{split}`: `weights` needs one weight per child ({children} children, \
+                 {weights} weights)"
+            ),
+            ConfigError::SplitWeightValue { split, index } => write!(
+                f,
+                "split `{split}`: weight {} of `weights` is not a number strictly positive",
+                index + 1
+            ),
+            ConfigError::DuplicateContentId { id } => write!(
+                f,
+                "window: `{id}` names two views or splits (they share one set of identifiers)"
+            ),
             ConfigError::UnknownPresentationClass { class } => {
                 write!(
                     f,

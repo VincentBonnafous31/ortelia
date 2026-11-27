@@ -1,0 +1,43 @@
+# Tâches : conteneur-split
+
+Toutes les commandes `cargo` se lancent dans WSL2, avec `CARGO_TARGET_DIR=~/target/ortelia` (voir `CLAUDE.md`). Chaque tâche laisse le workspace compilable, Clippy sans avertissement et les tests au vert. « Un test par scénario » renvoie aux scénarios des spécifications du changement. Avant d'écrire du code qui utilise egui, egui_tiles, egui_kittest ou schemars, consulter Context7 ou, pour egui_tiles, que Context7 ne référence pas, ses sources dans `~/.cargo/registry/src/*/egui_tiles-0.18.0`. Les tests qui écrivent un fichier d'état, ou qui ont besoin d'un autre `app.json`, travaillent sur une copie de `examples/annuaire` dans un dossier temporaire, jamais dans `examples/`.
+
+## 1. Dépendance egui_tiles
+
+- [x] 1.1 Ajouter `egui_tiles = "0.18.0"` au `Cargo.toml` racine, sans la feature `serde` (`default-features = false`), et à `ortelia-ui-egui`, puis relire dans ses sources les points de l'API dont dépend design.md (D5 : `Tree::new`, `Tiles::insert_pane`, `insert_container`, `Linear`, `Shares::set_share`, `Behavior`, `SimplificationOptions::OFF`, `EditAction::TileResized`) et corriger design.md en cas d'écart. Vérifier : `cargo build --workspace --locked` après mise à jour de `Cargo.lock`, `cargo xtask check-layers` se termine avec le code 0, et `cargo tree -i egui_tiles` ne le montre que sous `ortelia-ui-egui`.
+
+## 2. Format 0.5 de `app.json` (`ortelia-config`)
+
+- [x] 2.1 Écrire `Content::Split` (`SplitDef`, `Direction`), `Widget::Empty`, `data` facultatif, et passer `APP_FORMAT_VERSION` à `0.5` ; ajouter les vérifications de lecture (au moins deux enfants, poids, `data` selon le widget, identifiants uniques dans tout l'arbre), avec des erreurs rassemblées qui citent le split ou la vue (design.md, D2). Passer `examples/annuaire/app.json` au format 0.5, avec le split `principal` (table `personnes` à 65, vue vide `proprietes` à 35). Vérifier : un test par scénario des exigences « Contenu de `app.json` », « Version du format », « Contenu de la fenêtre », « Données selon le widget », « Split vérifié » et « Identifiants uniques dans la fenêtre » du delta d'`app-config`.
+- [x] 2.2 Remplacer la vue unique de `CheckedWindow` par un arbre vérifié, `CheckedContent`, et vérifier le `data` de chaque vue table à toute profondeur, en rassemblant les erreurs (design.md, D3). En attendant la tâche 3.1, la présentation prend la première vue table de l'arbre, pour que l'interface et ses tests restent inchangés. Vérifier : un test par scénario de l'exigence « Données d'une vue vérifiées contre le modèle » du delta d'`app-config`, dont « Vue table dans un split imbriqué » ; les tests de la présentation et de l'interface, captures comprises, passent sans changement.
+- [x] 2.3 Régénérer les schémas (`cargo xtask gen-schemas`), et adapter les tests des schémas. Vérifier : un test par scénario de l'exigence « Schémas générés depuis le code » du delta de `config-schemas`, dont « Contenu polymorphe de la fenêtre » et « Direction d'un split » ; `cargo xtask gen-schemas --check` se termine avec le code 0 ; `examples/annuaire/app.json` est valide pour `schemas/app.schema.json`.
+
+## 3. Arbre de disposition (`ortelia-presentation`)
+
+- [x] 3.1 Écrire le module `layout` (`LayoutNode`, `SplitNode`, `ViewNode`, `ViewContent`), `normalize_parts`, `AppState::view(id)` et `MainContent::Layout`, puis remplacer `OpenedApp::table` par l'arbre. Les tables vivent dans leurs vues, et `Direction` est réexporté (design.md, D4). Adapter `test_support.rs` et l'exemple `table-bench`, qui cherchent la table dans l'arbre. Vérifier : un test par scénario des exigences « Arbre de disposition fourni par la présentation » et « Parts calculées depuis les poids » de `window-layout`, et du scénario « Textes de la fenêtre principale » du delta d'`app-launch` ; `cargo run --release -p ortelia-presentation --example table-bench -- examples/annuaire` affiche son tableau.
+- [x] 3.2 Remplacer `Intent::Table(TableIntent)` par `Intent::Table { view, intent }`, et ajouter `Intent::SplitResized { split, shares }`, normalisé ou ignoré par la présentation (design.md, D4). L'interface émet le nouvel `Intent::Table` avec l'identifiant de sa vue, sans autre changement de dessin. Vérifier : un test par scénario des exigences « Parts reçues par la présentation » et « Intentions d'une vue adressées à cette vue » de `window-layout` (deux tables des mêmes données, sur une copie de l'annuaire) ; les tests existants de l'interface passent.
+
+## 4. Parts dans l'état de session (`ortelia-presentation`)
+
+- [x] 4.1 Ajouter `containers` au format du fichier d'état (`ContainerSession`, `SplitSession { weights }`, sans changer `formatVersion`), le calcul des parts de chaque split dans l'état de session, leur restauration par identifiant et le compte des conteneurs dans la ligne `session state restored` du journal (design.md, D6). Vérifier : un test par scénario des exigences « Contenu de l'état de session », « Restauration à l'ouverture », « Éléments disparus ignorés » (« Split inconnu », « Split devenu une vue ») et « Parts enregistrées vérifiées » du delta de `session-state` ; un fichier d'état sans `containers`, écrit avant ce changement, est toujours restauré.
+
+## 5. Dessin par egui_tiles (`ortelia-ui-egui`)
+
+- [x] 5.1 Écrire le module `layout` : construction du `Tree<Pane>` depuis l'arbre de disposition à la création de l'application, correspondance split → `TileId`, `Behavior` (dessin des vues, `is_tile_draggable` faux, `SimplificationOptions::OFF`, drapeau de `on_edit`), et intentions `SplitResized` après `tree.ui`. L'arbre remplace la table dans le `CentralPanel`, et l'`id_salt` de chaque table inclut l'identifiant de sa vue (design.md, D5). Vérifier, avec egui_kittest : un test par scénario des exigences « Dessin selon les parts », « Disposition fixe », « Vue vide » et « Séparation déplacée traduite en intention » de `window-layout`. La séparation est placée d'après les bornes de la table, jamais en dur (design.md, D7). Les tests existants de la table et de la fenêtre principale passent.
+- [x] 5.2 Renouveler la capture `main_window` (`UPDATE_SNAPSHOTS=1 cargo test -p ortelia-ui-egui`), regarder la nouvelle image avant de la versionner. Vérifier : le scénario « Fenêtre principale conforme » du delta d'`ui-snapshots` passe en local, avec lavapipe, et les autres captures (`open_error`…) n'ont pas changé.
+- [x] 5.3 Faire l'aller-retour complet avec egui_kittest, sur une copie temporaire de l'annuaire : glisser la séparation, appeler `on_exit`, puis rouvrir avec état de session dans l'interface. Vérifier : le scénario « Séparation retrouvée » du delta de `session-state` passe, ainsi que « Fermeture puis réouverture » et l'ouverture sans état de session, qui n'écrit rien.
+
+## 6. Essai S3, essai manuel et documents
+
+- [x] 6.1 Écrire `docs/essais/s3-conteneurs.md` : conditions (versions d'egui, d'egui_tiles, de Mesa), critères de design.md (D1) et test qui vérifie chacun, résultats, écarts rencontrés, décision. Vérifier : chaque critère y renvoie à un test qui existe et qui passe, et la décision (egui_tiles retenu, ou repli) est énoncée.
+- [x] 6.2 Essai manuel par `/lancer` : la table à gauche, la vue vide à droite, la séparation glissée puis la fenêtre fermée, la séparation retrouvée au lancement suivant, le double-clic qui centre la séparation, et la fenêtre redimensionnée qui garde les proportions. Vérifier : ces constats, plus les lignes d'enregistrement et de restauration du journal, qui comptent les conteneurs, et `git status` sans `app.session.json`. Si WSLg ne s'ouvre pas, faire l'essai sous Xvfb et le dire dans le bilan.
+- [x] 6.3 Mettre à jour `CLAUDE.md` et `docs/feuille-de-route-annuaire.md`. Dans `CLAUDE.md` : état du projet (incrément 3 commencé, `conteneur-split`), `app.json` au format 0.5, parts des splits dans `app.session.json`, `egui_tiles` dans les conventions egui. Dans la feuille de route : incrément 3 découpé en trois changements, essai S3 fait, renvoi au compte rendu. Vérifier : aucun renvoi à `docs/cadrage-prive/` dans les fichiers versionnés modifiés, et les commandes citées s'exécutent telles qu'écrites.
+
+## 7. Revue et vérification
+
+- [x] 7.1 `/code-review` sur le diff, puis `/simplify`, puis `/verifier` (`tools/check.sh` : format, Clippy pour Linux et pour la cible Windows, tests, règle des couches, schémas, test de fumée). Vérifier : le bilan de `/verifier` est entièrement vert, et `openspec validate conteneur-split --strict` réussit.
+
+## Workflow follow-up
+
+- Tester l'exécutable Windows de la CI dans le bac à sable (`/bac-a-sable`) : séparation glissée, fermeture, séparation retrouvée.
+- Archiver le changement (`/openspec-archive-change`) une fois la revue faite et la CI verte.

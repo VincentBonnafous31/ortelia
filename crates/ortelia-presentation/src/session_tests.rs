@@ -10,7 +10,8 @@ use tempfile::TempDir;
 use super::*;
 use crate::session::{FORMAT_VERSION, SortSession};
 use crate::test_support::{
-    capture_log, directory_copy, folder, lock_log_tests, open_example, table,
+    assert_parts, capture_log, directory_copy, directory_with_content, empty_json, folder,
+    lock_log_tests, open_example, split, split_json, table, table_json,
 };
 
 fn app_file(dir: &TempDir) -> PathBuf {
@@ -89,8 +90,31 @@ const SAVED_LAYOUT: &str = r#"{
         "filter": "dup"
       }
     }
-  ]
+  ],
+  "containers": [ { "id": "principal", "split": { "weights": [0.7, 0.3] } } ]
 }"#;
+
+/// The shares of the split `id` in the session state `saved`.
+fn saved_parts(saved: &SessionFile, id: &str) -> Vec<f32> {
+    saved
+        .containers
+        .iter()
+        .find(|c| c.id == id)
+        .and_then(|c| c.split.as_ref())
+        .unwrap_or_else(|| panic!("no split {id}: {saved:?}"))
+        .weights
+        .clone()
+}
+
+/// The shares of the split `principal` of the annuaire, opened with the session state `saved`
+/// written in the shape of `containers`.
+fn parts_restored_from(containers: &str) -> Vec<f32> {
+    let dir = directory_with_session(&format!(
+        r#"{{ "formatVersion": "1", "containers": {containers} }}"#
+    ));
+    let state = open_with_session(&app_file(&dir));
+    split(&state, "principal").parts().to_vec()
+}
 
 /// Scenario "Disposition modifiée".
 #[test]
@@ -100,33 +124,57 @@ fn modified_layout() {
         width: 1200.0,
         height: 800.0,
     });
-    state.dispatch(Intent::Table(TableIntent::MoveColumn {
-        from: column(&state, "Né le"),
-        to: 0,
-    }));
-    state.dispatch(Intent::Table(TableIntent::ResizeColumn {
-        column: column(&state, "Nom"),
-        width: 200.0,
-    }));
-    state.dispatch(Intent::Table(TableIntent::SortBy {
-        column: column(&state, "Situation"),
-        add: false,
-    }));
-    for _ in 0..2 {
-        state.dispatch(Intent::Table(TableIntent::SortBy {
+    state.dispatch(Intent::table(
+        "personnes",
+        TableIntent::MoveColumn {
+            from: column(&state, "Né le"),
+            to: 0,
+        },
+    ));
+    state.dispatch(Intent::table(
+        "personnes",
+        TableIntent::ResizeColumn {
             column: column(&state, "Nom"),
-            add: true,
-        }));
+            width: 200.0,
+        },
+    ));
+    state.dispatch(Intent::table(
+        "personnes",
+        TableIntent::SortBy {
+            column: column(&state, "Situation"),
+            add: false,
+        },
+    ));
+    for _ in 0..2 {
+        state.dispatch(Intent::table(
+            "personnes",
+            TableIntent::SortBy {
+                column: column(&state, "Nom"),
+                add: true,
+            },
+        ));
     }
-    state.dispatch(Intent::Table(TableIntent::SetFilter("dup".into())));
+    state.dispatch(Intent::table(
+        "personnes",
+        TableIntent::SetFilter("dup".into()),
+    ));
+    state.dispatch(Intent::SplitResized {
+        split: "principal".into(),
+        shares: vec![0.7, 0.3],
+    });
     assert_eq!(saved_window(&state), (Some(1200.0), Some(800.0)));
     let saved = state.session().expect("open");
     assert_eq!(saved.views.len(), 1);
     assert_eq!(saved.views[0].id, "personnes");
+    assert_eq!(saved.containers.len(), 1);
+    assert_parts(&saved_parts(&saved, "principal"), &[0.7, 0.3]);
     // The columns, the sort and the filter, as the table gives them (checked by the tests of
     // `TableView::session`).
     let app = state.app.as_ref().expect("open");
-    let table = app.table.session(app.context.document().model());
+    let ViewContent::Table(table) = &app.layout.view("personnes").expect("view").content else {
+        panic!("a table")
+    };
+    let table = table.session(app.context.document().model());
     assert_eq!(table.columns[0].path, "date_naissance");
     assert_eq!(table.filter, "dup");
     assert_eq!(saved.views[0].table, Some(table));
@@ -158,6 +206,16 @@ fn unchanged_layout() {
         ])
     );
     assert_eq!(table.filter, "");
+    assert_parts(&saved_parts(&saved, "principal"), &[0.65, 0.35]);
+}
+
+/// Scenario "Vue vide": nothing for the empty view `proprietes`.
+#[test]
+fn empty_view_not_saved() {
+    let saved = open_example().session().expect("open");
+    let views: Vec<&str> = saved.views.iter().map(|v| v.id.as_str()).collect();
+    assert_eq!(views, ["personnes"]);
+    assert!(saved.containers.iter().all(|c| c.id != "proprietes"));
 }
 
 /// Scenario "Fenêtre redimensionnée", in the presentation.
@@ -244,9 +302,29 @@ fn layout_restored() {
         .find(|l| l.contains("session state restored"))
         .unwrap_or_else(|| panic!("{log}"));
     assert!(
-        restored.contains(" INFO ") && restored.contains("views=1"),
+        restored.contains(" INFO ")
+            && restored.contains("views=1")
+            && restored.contains("containers=1"),
         "{log}"
     );
+    assert_parts(split(&state, "principal").parts(), &[0.7, 0.3]);
+}
+
+/// A file written before the splits, without `containers`, is restored; the shares are those of
+/// `app.json`.
+#[test]
+fn file_without_containers() {
+    let _lock = lock_log_tests();
+    let mut without: serde_json::Value = serde_json::from_str(SAVED_LAYOUT).expect("JSON");
+    without
+        .as_object_mut()
+        .expect("an object")
+        .remove("containers");
+    let without = without.to_string();
+    let dir = directory_with_session(&without);
+    let state = open_with_session(&app_file(&dir));
+    assert_eq!(headers(&state, 2), ["Prénom", "Nom"]);
+    assert_parts(split(&state, "principal").parts(), &[0.65, 0.35]);
 }
 
 /// Scenario "Pas de fichier".
@@ -256,6 +334,7 @@ fn no_file() {
     let dir = directory_copy();
     let (state, log) = capture_log(|| open_with_session(&app_file(&dir)));
     assert_layout_of_app_json(&state);
+    assert_parts(split(&state, "principal").parts(), &[0.65, 0.35]);
     assert_eq!(state.status_bar(), None);
     assert!(!log.contains(" WARN "), "{log}");
 }
@@ -317,6 +396,70 @@ fn unknown_view() {
     let views = state.session().expect("open").views;
     assert_eq!(views.len(), 1);
     assert_eq!(views[0].id, "personnes");
+}
+
+/// Scenario "Split inconnu"; a split in double, the first counts.
+#[test]
+fn unknown_split() {
+    let _lock = lock_log_tests();
+    let parts = parts_restored_from(
+        r#"[ { "id": "lateral", "split": { "weights": [0.2, 0.8] } },
+             { "id": "principal", "split": { "weights": [0.7, 0.3] } },
+             { "id": "principal", "split": { "weights": [0.1, 0.9] } } ]"#,
+    );
+    assert_parts(&parts, &[0.7, 0.3]);
+    // Only the splits of the application are saved again.
+    let dir = directory_with_session(SAVED_LAYOUT);
+    let saved = open_with_session(&app_file(&dir)).session().expect("open");
+    let ids: Vec<&str> = saved.containers.iter().map(|c| c.id.as_str()).collect();
+    assert_eq!(ids, ["principal"]);
+}
+
+/// Scenario "Split devenu une vue", and an entry of a newer kind of container first.
+#[test]
+fn split_now_a_view() {
+    let _lock = lock_log_tests();
+    let parts = parts_restored_from(
+        r#"[ { "id": "personnes", "split": { "weights": [0.2, 0.8] } },
+             { "id": "principal", "tabs": { "active": 1 } },
+             { "id": "principal", "split": { "weights": [0.7, 0.3] } } ]"#,
+    );
+    assert_parts(&parts, &[0.7, 0.3]);
+}
+
+/// Scenario "Split qui a gagné un enfant".
+#[test]
+fn split_with_a_new_child() {
+    let _lock = lock_log_tests();
+    let dir = directory_with_content(&split_json(
+        "principal",
+        "horizontal",
+        r#""weights": [50, 25, 25],"#,
+        &[table_json("personnes"), empty_json("a"), empty_json("b")],
+    ));
+    std::fs::write(
+        state_file(&dir),
+        r#"{ "formatVersion": "1",
+             "containers": [ { "id": "principal", "split": { "weights": [0.7, 0.3] } } ] }"#,
+    )
+    .expect("write");
+    let state = open_with_session(&app_file(&dir));
+    assert_parts(split(&state, "principal").parts(), &[0.5, 0.25, 0.25]);
+}
+
+/// Scenarios "Part négative" and "Parts dont la somme n'est pas 1", and other wrong values.
+#[test]
+fn saved_parts_checked() {
+    let _lock = lock_log_tests();
+    let one = |weights: &str| {
+        parts_restored_from(&format!(
+            r#"[ {{ "id": "principal", "split": {{ "weights": {weights} }} }} ]"#
+        ))
+    };
+    assert_parts(&one("[-0.2, 1.2]"), &[0.65, 0.35]);
+    assert_parts(&one("[0, 1]"), &[0.65, 0.35]);
+    assert_parts(&one("[]"), &[0.65, 0.35]);
+    assert_parts(&one("[3, 1]"), &[0.75, 0.25]);
 }
 
 /// A view of the same identifier without table, written by a newer version, before the table.
@@ -395,10 +538,13 @@ fn app_json_unchanged() {
     let dir = directory_copy();
     let before = std::fs::read(app_file(&dir)).expect("read");
     let mut state = open_with_session(&app_file(&dir));
-    state.dispatch(Intent::Table(TableIntent::ResizeColumn {
-        column: 0,
-        width: 300.0,
-    }));
+    state.dispatch(Intent::table(
+        "personnes",
+        TableIntent::ResizeColumn {
+            column: 0,
+            width: 300.0,
+        },
+    ));
     state.save_session();
     assert_eq!(std::fs::read(app_file(&dir)).expect("read"), before);
 }
@@ -410,7 +556,10 @@ fn filter_saved_then_restored() {
     let dir = directory_copy();
     let ((), log) = capture_log(|| {
         let mut state = open_with_session(&app_file(&dir));
-        state.dispatch(Intent::Table(TableIntent::SetFilter("dup".into())));
+        state.dispatch(Intent::table(
+            "personnes",
+            TableIntent::SetFilter("dup".into()),
+        ));
         state.prepare();
         state.save_session();
         let mut state = open_with_session(&app_file(&dir));
