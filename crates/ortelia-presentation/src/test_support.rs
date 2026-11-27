@@ -7,7 +7,9 @@ use std::sync::{Mutex, MutexGuard};
 use ortelia_service::app::AppContext;
 use tempfile::TempDir;
 
-use crate::{AppState, LayoutNode, MainContent, SplitNode, TableRef, ViewRef};
+use crate::{
+    AppState, Cell, FormRef, LayoutNode, MainContent, ObjectId, SplitNode, TableRef, ViewRef,
+};
 
 /// `tracing` caches, per call site, whether a subscriber is interested: a test without
 /// subscriber that reaches "missing label" first could hide the event from the test that
@@ -94,13 +96,39 @@ pub fn directory_with(app: &str, persons: &str) -> TempDir {
 /// The directory application in a temporary folder, whose window has another content, given
 /// as JSON: other splits and views of the persons.
 pub fn directory_with_content(content: &str) -> TempDir {
+    let content: serde_json::Value = serde_json::from_str(content).expect("content");
+    directory_edited(|app| app["window"]["content"] = content)
+}
+
+/// The directory application in a temporary folder, with its `app.json` changed by `edit`.
+pub fn directory_edited(edit: impl FnOnce(&mut serde_json::Value)) -> TempDir {
+    directory_edited_with(edit, &example("annuaire/personnes.json"))
+}
+
+/// The directory application in a temporary folder, with its `app.json` changed by `edit`, and
+/// the persons `persons`.
+pub fn directory_edited_with(edit: impl FnOnce(&mut serde_json::Value), persons: &str) -> TempDir {
     let mut app: serde_json::Value =
         serde_json::from_str(&example("annuaire/app.json")).expect("app.json");
-    app["window"]["content"] = serde_json::from_str(content).expect("content");
-    directory_with(
-        &serde_json::to_string_pretty(&app).expect("JSON"),
-        &example("annuaire/personnes.json"),
-    )
+    edit(&mut app);
+    directory_with(&serde_json::to_string_pretty(&app).expect("JSON"), persons)
+}
+
+/// The form of the view `id` of an open application.
+pub fn form<'a>(state: &'a AppState, id: &str) -> FormRef<'a> {
+    match state.view(id) {
+        Some(ViewRef::Form(form)) => form,
+        _ => panic!("no form view {id}"),
+    }
+}
+
+/// The person of the table of an open application whose `nom` (first column) is `name`.
+pub fn person(state: &AppState, name: &str) -> ObjectId {
+    let table = table(state);
+    (0..table.row_count())
+        .find(|&row| table.cell(row, 0) == Cell::Text(name.to_owned()))
+        .and_then(|row| table.object(row))
+        .unwrap_or_else(|| panic!("no person {name}"))
 }
 
 /// A view of the persons in a table, as JSON.

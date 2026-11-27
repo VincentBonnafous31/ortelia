@@ -10,6 +10,7 @@
 use ortelia_config::{CheckedApp, CheckedContent, CheckedView, Direction};
 use ortelia_model::metamodel::Model;
 
+use crate::form::FormView;
 use crate::labels::LabelLookup;
 use crate::table::TableView;
 
@@ -44,12 +45,14 @@ pub(crate) enum ViewContent {
     /// so that every node of the tree does not take its size (an enum is as large as its
     /// largest variant).
     Table(Box<TableView>),
+    /// Boxed too: a form holds its grids.
+    Form(Box<FormView>),
     Empty,
 }
 
 impl LayoutNode {
-    /// The layout of `content`, a content of the window of `app`, with its tables. The labels
-    /// are looked up once, here.
+    /// The layout of `content`, a content of the window of `app`, with its tables and forms.
+    /// The labels are looked up once, here.
     pub(crate) fn build(
         app: &CheckedApp,
         content: &CheckedContent,
@@ -60,6 +63,10 @@ impl LayoutNode {
             CheckedContent::View(CheckedView::Table(view)) => LayoutNode::View(ViewNode {
                 id: view.id.clone(),
                 content: ViewContent::Table(Box::new(TableView::new(app, view, model, lookup))),
+            }),
+            CheckedContent::View(CheckedView::Form { id, class }) => LayoutNode::View(ViewNode {
+                id: id.clone(),
+                content: ViewContent::Form(Box::new(FormView::new(app, id, *class, model, lookup))),
             }),
             CheckedContent::View(CheckedView::Empty { id }) => LayoutNode::View(ViewNode {
                 id: id.clone(),

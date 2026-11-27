@@ -10,7 +10,7 @@
 //! in the same package, it sees the private items (`OrteliaApp`, `draw_main_window`).
 
 use super::*;
-use crate::tests::{directory, lock_app_tests, recorder_of};
+use crate::tests::{directory, lock_app_tests, recorder_of, show};
 use egui_kittest::{Harness, HarnessBuilder, OsThreshold, SnapshotError, SnapshotOptions};
 use ortelia_presentation::{AppState, Intent, TableIntent};
 
@@ -42,6 +42,26 @@ fn main_window() {
     harness.run();
     // Records the result; the harness panics when dropped if the image does not match.
     harness.snapshot("main_window");
+}
+
+/// The form of the annuaire showing Dupont, the split moved so that the form has 60 % of the
+/// width: enough for its two columns, at the size of the snapshots.
+#[test]
+#[cfg_attr(
+    not(target_os = "linux"),
+    ignore = "snapshots are compared on Linux only, with lavapipe (docs/essais/captures-images.md)"
+)]
+fn form() {
+    let _lock = lock_app_tests();
+    let mut state = show(directory(), "Dupont");
+    state.dispatch(Intent::SplitResized {
+        split: "principal".into(),
+        shares: vec![0.4, 0.6],
+    });
+    // The tiles are built from the parts of the state, as at the opening after the session.
+    let mut harness = snapshot_harness().build_eframe(|_cc| OrteliaApp::new(state));
+    harness.run();
+    harness.snapshot("form");
 }
 
 /// The dialog of an application that could not be opened, with two errors fixed here (not

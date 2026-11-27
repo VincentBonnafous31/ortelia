@@ -6,7 +6,7 @@
 //! They are names of the configuration, not data of the user.
 
 use ortelia_config::Labels;
-use ortelia_model::metamodel::{AttrId, ClassId, EnumId, Model};
+use ortelia_model::metamodel::{AttrId, AttrType, ClassId, EnumId, Model};
 use tracing::warn;
 
 /// Looks labels up in one language, and gathers the keys it did not find.
@@ -58,6 +58,25 @@ impl<'a> LabelLookup<'a> {
         }
     }
 
+    /// The labels of the literals of an enum type, in their order; none for another type.
+    pub fn literals(&mut self, attr_type: AttrType) -> Vec<String> {
+        match attr_type {
+            AttrType::Enum(id) => (0..self.model.enum_type(id).literals().len())
+                .map(|index| self.literal(id, index))
+                .collect(),
+            _ => Vec::new(),
+        }
+    }
+
+    /// The text of a free key, cited by a form (title of a group, fixed text, label of a
+    /// field), or `#key#`.
+    pub fn key(&mut self, key: &str) -> String {
+        match self.labels.text(self.lang, key) {
+            Some(text) => text.to_owned(),
+            None => self.missing_label(key.to_owned()),
+        }
+    }
+
     /// The keys not found, in the order of the lookups, each once.
     pub fn missing(&self) -> &[String] {
         &self.missing
@@ -76,6 +95,15 @@ impl<'a> LabelLookup<'a> {
             self.missing.push(key);
         }
         shown
+    }
+}
+
+/// The label of an attribute followed by its unit between parentheses, if it has one: the
+/// header of a column, the label of a field (`Taille (m)`).
+pub fn with_unit(label: String, unit: Option<&str>) -> String {
+    match unit {
+        Some(unit) => format!("{label} ({unit})"),
+        None => label,
     }
 }
 
@@ -103,7 +131,7 @@ mod tests {
     /// The labels of an `app.json` with the given groups.
     fn labels(model: &Model, groups: &str) -> Labels {
         let text = format!(
-            r#"{{ "formatVersion": "0.5", "id": "a", "name": "A", "languages": ["fr", "en"],
+            r#"{{ "formatVersion": "0.6", "id": "a", "name": "A", "languages": ["fr", "en"],
                  "labels": {groups},
                  "model": {{ "files": [], "root": "Racine" }},
                  "window": {{ "content": {{ "_type_": "View", "id": "v",
@@ -197,5 +225,28 @@ mod tests {
         assert_eq!(lookup.literal(id, 1), "#Situation.VEUF#");
         assert_eq!(lookup.literal(id, 1), "#Situation.VEUF#");
         assert_eq!(lookup.missing(), ["Situation.VEUF"]);
+    }
+
+    /// A free key, found or missing; a missing key looked up twice is recorded once.
+    #[test]
+    fn free_keys() {
+        let _lock = crate::test_support::lock_log_tests();
+        let model = model();
+        let labels = labels(
+            &model,
+            r#"[ { "lang": "fr", "entries": [ { "key": "Personne.nom", "text": "Nom" } ] } ]"#,
+        );
+        let mut lookup = LabelLookup::new(&labels, &model, "fr");
+        assert_eq!(lookup.key("Personne.nom"), "Nom");
+        assert_eq!(lookup.key("Personne.aide"), "#Personne.aide#");
+        assert_eq!(lookup.key("Personne.aide"), "#Personne.aide#");
+        assert_eq!(lookup.missing(), ["Personne.aide"]);
+    }
+
+    /// The unit follows the label between parentheses.
+    #[test]
+    fn label_with_unit() {
+        assert_eq!(with_unit("Taille".into(), Some("m")), "Taille (m)");
+        assert_eq!(with_unit("Nom".into(), None), "Nom");
     }
 }

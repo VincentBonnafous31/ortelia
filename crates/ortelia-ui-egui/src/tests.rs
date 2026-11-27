@@ -7,8 +7,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use egui::Role;
 use egui_kittest::Harness;
-use egui_kittest::kittest::Queryable;
-use ortelia_presentation::{AppState, Intent, TableIntent, ViewRef};
+use egui_kittest::kittest::{NodeT as _, Queryable};
+use ortelia_presentation::{AppState, Cell, Intent, TableIntent, ViewRef};
 
 use super::*;
 
@@ -100,6 +100,71 @@ impl eframe::App for Recorder {
         self.state.prepare();
         let intents = draw_main_window(ui, &self.state, self.layout.as_mut());
         self.intents.extend(intents);
+    }
+}
+
+/// `state`, an application of the persons, its form view `proprietes` showing the person `name`,
+/// found in its table `personnes`.
+pub(crate) fn show(mut state: AppState, name: &str) -> AppState {
+    // The rows of the table, sorted.
+    state.prepare();
+    let Some(ViewRef::Table(table)) = state.view("personnes") else {
+        panic!("the table of the persons")
+    };
+    let person = (0..table.row_count())
+        .find(|&row| table.cell(row, 0) == Cell::Text(name.to_owned()))
+        .and_then(|row| table.object(row))
+        .unwrap_or_else(|| panic!("no person {name}"));
+    assert!(state.set_form_object("proprietes", Some(person)));
+    state
+}
+
+/// The filter fields of the tables of the window: its text fields outside the form views.
+pub(crate) fn filter_fields<'h, State>(
+    harness: &'h Harness<'_, State>,
+) -> impl Iterator<Item = egui_kittest::Node<'h>> {
+    // The nodes of the form views: the node of a view, a `Ui`, has no bounds of its own.
+    let in_forms: Vec<_> = harness
+        .query_all_by_role(Role::Form)
+        .flat_map(|form| {
+            form.children_recursive()
+                .map(|node| node.accesskit_node().id())
+                .collect::<Vec<_>>()
+        })
+        .collect();
+    harness
+        .query_all_by_role(Role::TextInput)
+        .filter(move |field| !in_forms.contains(&field.accesskit_node().id()))
+}
+
+/// The filter field of the only table of the window.
+pub(crate) fn filter_field<'h, State>(harness: &'h Harness<'_, State>) -> egui_kittest::Node<'h> {
+    let mut fields = filter_fields(harness);
+    let field = fields.next().expect("a filter field");
+    assert!(fields.next().is_none(), "a single table");
+    field
+}
+
+/// The size of the window of the annuaire, in points.
+pub(crate) const WINDOW: egui::Vec2 = egui::vec2(1000.0, 700.0);
+
+/// The tolerance on a width or a position, in points: positions are rounded to the pixel, and
+/// the separator of egui_tiles is a gap of one point between two tiles.
+pub(crate) const TOLERANCE: f32 = 2.0;
+
+pub(crate) fn assert_near(value: f32, expected: f32) {
+    assert!(
+        (value - expected).abs() <= TOLERANCE,
+        "{value} is not {expected}, to {TOLERANCE} points"
+    );
+}
+
+/// Gives the presentation the intents of the frames drawn so far, as the application does, and
+/// forgets them: the widths the table measures at its first frames. Only the intents of what the
+/// test does next remain.
+pub(crate) fn settle(harness: &mut Harness<'_, Recorder>) {
+    for intent in std::mem::take(&mut harness.state_mut().intents) {
+        harness.state_mut().state.dispatch(intent);
     }
 }
 
@@ -203,9 +268,9 @@ fn click_and_shift_click() {
 fn filter_typed() {
     let mut harness = recorder(directory());
     harness.run();
-    harness.get_by_role(Role::TextInput).focus();
+    filter_field(&harness).focus();
     harness.run();
-    harness.get_by_role(Role::TextInput).type_text("dup");
+    filter_field(&harness).type_text("dup");
     harness.run();
     assert_eq!(
         table_intents(&harness),
@@ -654,10 +719,7 @@ fn closing_without_session_state() {
 fn idle_table_emits_no_intent() {
     let mut harness = recorder(directory());
     harness.run();
-    // The widths measured by the first frames go to the presentation, as the application does.
-    for intent in std::mem::take(&mut harness.state_mut().intents) {
-        harness.state_mut().state.dispatch(intent);
-    }
+    settle(&mut harness);
     harness.run_steps(5);
     assert!(
         harness.state().intents.is_empty(),

@@ -12,15 +12,9 @@ use ortelia_presentation::{AppState, Intent, MainContent, TableIntent};
 use super::VIEW_MARGIN;
 use crate::OrteliaApp;
 use crate::tests::{
-    Recorder, directory, directory_copy, directory_with, drag, example, lock_app_tests, recorder_of,
+    Recorder, WINDOW, assert_near, directory, directory_copy, directory_with, drag, example,
+    filter_field, lock_app_tests, recorder_of,
 };
-
-/// The size of the window of the annuaire, in points.
-const WINDOW: egui::Vec2 = egui::vec2(1000.0, 700.0);
-
-/// The tolerance on a width or a position, in points: the separator of egui_tiles is a gap of one
-/// point between two tiles, and positions are rounded to the pixel.
-const TOLERANCE: f32 = 2.0;
 
 /// A harness with the window of the annuaire that draws `state` and records its intents. A
 /// short time step: the two clicks of a double-click come within its delay.
@@ -43,7 +37,7 @@ fn tile_of(filter: egui::Rect, counter: egui::Rect) -> egui::Rangef {
 /// The horizontal extent of the tile of the only table of the window.
 fn table_tile<State>(harness: &Harness<'_, State>) -> egui::Rangef {
     tile_of(
-        harness.get_by_role(Role::TextInput).rect(),
+        filter_field(harness).rect(),
         harness.get_by_label("10 / 10").rect(),
     )
 }
@@ -100,13 +94,6 @@ fn parts_received(harness: &mut Harness<'_, Recorder>) -> Vec<f32> {
         state.dispatch(intent);
     }
     principal_parts(state)
-}
-
-fn assert_near(value: f32, expected: f32) {
-    assert!(
-        (value - expected).abs() <= TOLERANCE,
-        "{value} is not {expected}, to {TOLERANCE} points"
-    );
 }
 
 /// Scenario "Table de l'annuaire à gauche".
@@ -268,10 +255,10 @@ fn view_dragged() {
     let mut harness = layout_recorder(directory());
     harness.run();
     let before = table_tile(&harness);
-    let middle_of_the_empty_view = egui::pos2((before.max + WINDOW.x) / 2.0, WINDOW.y / 2.0);
+    let middle_of_the_form = egui::pos2((before.max + WINDOW.x) / 2.0, WINDOW.y / 2.0);
     drag(
         &mut harness,
-        middle_of_the_empty_view,
+        middle_of_the_form,
         egui::pos2(1.0, WINDOW.y / 2.0),
     );
     let after = table_tile(&harness);
@@ -280,13 +267,22 @@ fn view_dragged() {
     assert_eq!(split_intents(&harness), []);
 }
 
-/// Scenario "Vue de droite de l'annuaire": the tile of the view `proprietes` holds only the
-/// containers of egui, without text, while that of the table holds its widgets. (The table may
+/// The annuaire whose view `proprietes`, on the right, is an empty view instead of a form.
+fn directory_with_empty_view() -> AppState {
+    let app = example("annuaire/app.json").replace(
+        r#""widget": { "_type_": "Form", "class": "Personne" }"#,
+        r#""widget": { "_type_": "Empty" }"#,
+    );
+    directory_with(&app, &example("annuaire/personnes.json"))
+}
+
+/// Scenario "Vue de droite de l'annuaire", on a copy of the annuaire whose view `proprietes` is
+/// empty: its tile holds only the containers of egui, without text, while that of the table holds its widgets. (The table may
 /// have nodes beyond the separator: its columns that do not fit, cut by its horizontal scroll;
 /// the screen cannot tell them apart, the tree can.)
 #[test]
 fn empty_view_draws_nothing() {
-    let mut harness = layout_recorder(directory());
+    let mut harness = layout_recorder(directory_with_empty_view());
     harness.run();
     let separator = separator(&harness);
     let is_separator = |node: &Node<'_>| {

@@ -10,7 +10,9 @@
 //! a reference to the state while changing it, which is what the borrow checker of Rust asks.
 
 pub mod fold;
+pub mod form;
 pub mod format;
+pub mod grid;
 pub mod labels;
 pub mod layout;
 pub mod session;
@@ -21,15 +23,32 @@ use std::path::{Path, PathBuf};
 use ortelia_config::{MAX_WINDOW_SIZE, MIN_WINDOW_SIZE};
 use ortelia_service::app::{AppContext, OpenError, SourceError, SourceStatus};
 
+pub use form::{FieldCell, FieldKind, FieldValue, FormCell, FormGrid, FormRef};
 pub use format::Cell;
+pub use grid::{ColumnWidths, Grid, Placement};
 pub use layout::{LayoutNode, SplitNode, ViewNode};
-// Re-exported, so that the user interfaces need not depend on `ortelia-config`.
+// Re-exported, so that the user interfaces need not depend on `ortelia-config` nor on
+// `ortelia-model`.
 pub use ortelia_config::{Align, Direction, MAX_COLUMN_WIDTH, MIN_COLUMN_WIDTH};
+pub use ortelia_model::store::ObjectId;
 pub use table::{Column, TableIntent, TableRef, TableView};
 
 use labels::LabelLookup;
 use layout::ViewContent;
 use session::{ContainerSession, SessionFile, SplitSession, ViewSession, WindowSession};
+
+/// The presentation that applies to `class`: its own, or that of its nearest super class that has
+/// one. The same rule for the table and the form of a class.
+pub(crate) fn nearest_presentation<'a>(
+    app: &'a ortelia_config::CheckedApp,
+    model: &ortelia_model::metamodel::Model,
+    class: ortelia_model::metamodel::ClassId,
+) -> Option<&'a ortelia_config::CheckedPresentation> {
+    // The class itself, then its ancestors, nearest first.
+    std::iter::once(class)
+        .chain(model.class(class).ancestors())
+        .find_map(|c| app.presentations.get(&c))
+}
 
 /// The title of the window when no application could be opened.
 const DEFAULT_TITLE: &str = "Ortelia";
@@ -102,6 +121,7 @@ pub enum MainContent<'a> {
 /// The widget of a view, as the user interface reads it.
 pub enum ViewRef<'a> {
     Table(TableRef<'a>),
+    Form(FormRef<'a>),
     /// Nothing to draw.
     Empty,
 }
@@ -271,7 +291,8 @@ impl AppState {
                         id: view.id().to_owned(),
                         table: Some(table.session(app.context.document().model())),
                     }),
-                    ViewContent::Empty => None,
+                    // A form keeps nothing in the session state.
+                    ViewContent::Form(_) | ViewContent::Empty => None,
                 })
                 .collect(),
             containers: app
@@ -428,8 +449,24 @@ impl AppState {
         let app = self.app.as_ref()?;
         Some(match &app.layout.view(id)?.content {
             ViewContent::Table(table) => ViewRef::Table(table.read(app.context.document())),
+            ViewContent::Form(form) => ViewRef::Form(form.read(app.context.document().store())),
             ViewContent::Empty => ViewRef::Empty,
         })
+    }
+
+    /// Gives the form view `view` the object to show, or none. `false`, and nothing changed,
+    /// if the window has no view `view`, or if it is not a form. The entry point of the broker
+    /// of the selection, which will call it; until then, only the tests do. An object of
+    /// another class than the one of the view is accepted, and not shown.
+    pub fn set_form_object(&mut self, view: &str, object: Option<ObjectId>) -> bool {
+        if let Some(app) = &mut self.app
+            && let Some(view) = app.layout.view_mut(view)
+            && let ViewContent::Form(form) = &mut view.content
+        {
+            form.set_object(object);
+            return true;
+        }
+        false
     }
 
     /// The dialog shown over the window, if any.

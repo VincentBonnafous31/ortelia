@@ -184,6 +184,17 @@
               "type": "null"
             }
           ]
+        },
+        "form": {
+          "description": "The form of an object of the class. Without it, one field per attribute, in the order of\nthe model.",
+          "anyOf": [
+            {
+              "$ref": "#/definitions/FormDef"
+            },
+            {
+              "type": "null"
+            }
+          ]
         }
       },
       "additionalProperties": false,
@@ -304,6 +315,382 @@
         }
       ]
     },
+    "FormDef": {
+      "description": "The form of a class: its elements, placed in a grid from left to right, then row by row.",
+      "type": "object",
+      "properties": {
+        "columns": {
+          "description": "The columns of the grid. By default two: the labels, then the values, which take the\nwidth left.",
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "#/definitions/GridColumnDef"
+          }
+        },
+        "elements": {
+          "description": "The fields, groups, separators and texts, in the order of the grid.",
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Element"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "elements"
+      ]
+    },
+    "GridColumnDef": {
+      "description": "A column of a grid.",
+      "type": "object",
+      "properties": {
+        "grow": {
+          "description": "The share of the width left that the column takes, a number positive or zero (0 by\ndefault: the column keeps the width of its content).",
+          "type": [
+            "number",
+            "null"
+          ],
+          "format": "double",
+          "default": null
+        }
+      },
+      "additionalProperties": false
+    },
+    "Element": {
+      "description": "An element of a form or of a group, chosen by `_type_`.",
+      "oneOf": [
+        {
+          "description": "An attribute of the object: its label, then its widget, in two cells.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "Field"
+            },
+            "path": {
+              "description": "The name of an attribute of the class, inherited ones included.",
+              "type": "string"
+            },
+            "widget": {
+              "description": "By default, the widget of the type of the attribute: a text field, a number field, a\ncheck box, a combo box, a date or date-time field.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/FieldWidget"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "label": {
+              "description": "The key of the label (in `labels`); by default, the label of the attribute.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "labelCell": {
+              "description": "The cell of the label.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/CellDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "cell": {
+              "description": "The cell of the widget.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/CellDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_",
+            "path"
+          ]
+        },
+        {
+          "description": "A frame with a title, and a grid of its own for its elements.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "Group"
+            },
+            "label": {
+              "description": "The key of the title (in `labels`); without it, the group has no title.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            },
+            "columns": {
+              "description": "The columns of the grid of the group; by default two, as for a form.",
+              "type": [
+                "array",
+                "null"
+              ],
+              "items": {
+                "$ref": "#/definitions/GridColumnDef"
+              }
+            },
+            "elements": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/Element"
+              }
+            },
+            "cell": {
+              "description": "The cell of the group; by default, the whole row.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/CellDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_"
+          ]
+        },
+        {
+          "description": "A horizontal line.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "Separator"
+            },
+            "cell": {
+              "description": "The cell of the separator; by default, the whole row.",
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/CellDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_"
+          ]
+        },
+        {
+          "description": "A fixed text.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "Text"
+            },
+            "label": {
+              "description": "The key of the text, in `labels`.",
+              "type": "string"
+            },
+            "cell": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/CellDef"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_",
+            "label"
+          ]
+        }
+      ]
+    },
+    "FieldWidget": {
+      "description": "The widget of a field, chosen by `_type_`. Each one accepts only the types of attribute it\nsuits.",
+      "oneOf": [
+        {
+          "description": "A text on one line, for a text.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "TextField"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_"
+          ]
+        },
+        {
+          "description": "A text on several lines, for a text.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "TextArea"
+            },
+            "rows": {
+              "description": "The number of lines shown, from 1 to 50 (4 by default).",
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "uint32",
+              "minimum": 0,
+              "default": null
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_"
+          ]
+        },
+        {
+          "description": "A number, for an integer or a decimal.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "NumberField"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_"
+          ]
+        },
+        {
+          "description": "A check box, for a boolean.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "CheckBox"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_"
+          ]
+        },
+        {
+          "description": "A drop-down list of the literals, for an enum.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "ComboBox"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_"
+          ]
+        },
+        {
+          "description": "One radio button per literal, for an enum.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "RadioGroup"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_"
+          ]
+        },
+        {
+          "description": "A date.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "DateField"
+            },
+            "format": {
+              "description": "An LDML pattern: `dd/MM/yyyy`, `d MMMM yyyy HH:mm`… By default, the one of the language.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_"
+          ]
+        },
+        {
+          "description": "A date and a time.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "DateTimeField"
+            },
+            "format": {
+              "description": "An LDML pattern: `dd/MM/yyyy`, `d MMMM yyyy HH:mm`… By default, the one of the language.",
+              "type": [
+                "string",
+                "null"
+              ],
+              "default": null
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_"
+          ]
+        }
+      ]
+    },
+    "CellDef": {
+      "description": "The place of a cell in its grid.",
+      "type": "object",
+      "properties": {
+        "span": {
+          "description": "The number of columns the cell takes, from 1 to the number of columns of the grid. By\ndefault 1, and the whole row for a group or a separator.",
+          "type": [
+            "integer",
+            "null"
+          ],
+          "format": "uint32",
+          "minimum": 0,
+          "default": null
+        },
+        "newRow": {
+          "description": "`true`: the cell starts a new row, unless the current row is still empty.",
+          "type": "boolean",
+          "default": false
+        }
+      },
+      "additionalProperties": false
+    },
     "WindowDef": {
       "description": "The main window.",
       "type": "object",
@@ -364,7 +751,7 @@
               "$ref": "#/definitions/Widget"
             },
             "data": {
-              "description": "The data shown: `/r1/…/rn`, containment references from the root, the last one a list.\nRequired by a table; an empty view has none.",
+              "description": "The data shown: `/r1/…/rn`, containment references from the root, the last one a list.\nRequired by a table; an empty view and a form have none.",
               "type": [
                 "string",
                 "null"
@@ -453,6 +840,25 @@
           "additionalProperties": false,
           "required": [
             "_type_"
+          ]
+        },
+        {
+          "description": "The form of a class: the properties of one object, in read-only fields.",
+          "type": "object",
+          "properties": {
+            "_type_": {
+              "type": "string",
+              "const": "Form"
+            },
+            "class": {
+              "description": "The name of the class whose objects the form shows, abstract or not. The form is the one\nof its presentation, or of its nearest super class that has one, or else one field per\nattribute.",
+              "type": "string"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "_type_",
+            "class"
           ]
         }
       ]

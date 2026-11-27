@@ -189,7 +189,7 @@ fn inherited_app(presentations: &str, labels: &str) -> (Model, CheckedApp) {
     let model =
         Model::compile(&[ModelFile::parse(INHERITED_MODEL).expect("parse")]).expect("compile");
     let text = format!(
-        r#"{{ "formatVersion": "0.5", "id": "a", "name": "A", "languages": ["fr"],
+        r#"{{ "formatVersion": "0.6", "id": "a", "name": "A", "languages": ["fr"],
              "labels": [ {{ "lang": "fr", "entries": {labels} }} ],
              "model": {{ "files": [], "root": "Racine" }},
              "presentations": {presentations},

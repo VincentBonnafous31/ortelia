@@ -5,6 +5,7 @@
 //! only), and the intents gathered while drawing are dispatched to the state afterwards.
 
 mod dialogs;
+mod form;
 mod layout;
 mod table;
 

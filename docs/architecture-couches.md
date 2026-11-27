@@ -99,6 +99,12 @@ L'état **persistant** (largeurs et ordre des colonnes, ratios des sliders, ongl
 
 La présentation décrit chaque champ par un type de widget (`text`, `combo`, `date`…) et ses options. Chaque interface fournit un rendu par type. Si une interface ne sait pas encore rendre un type, elle affiche « non pris en charge » au lieu de planter : une seconde interface peut donc être construite progressivement.
 
+Mis en place par le changement `formulaire` (incrément 3) :
+- **Un catalogue partagé.** Dans `app.json`, le widget d'une vue (`Table`, `Empty`, `Form`) et celui d'un champ de formulaire (`TextField`, `TextArea`, `NumberField`, `CheckBox`, `ComboBox`, `RadioGroup`, `DateField`, `DateTimeField`) sont deux énumérations, chacune limitée à ce que son contexte accepte. Quand une table entrera dans un formulaire, la même définition deviendra une variante des deux : c'est le même widget, avec les mêmes options.
+- **Des noms de `_type_` uniques dans tout `app.json`** (`View`, `Split`, `Field`, `Group`, `Text`, `TextField`…) : quand la configuration sera décrite par un modèle, chacun sera une classe d'un même paquetage. D'où `TextField`, et non `Text`, qui est le texte fixe d'un formulaire.
+- **La grille dans la présentation.** Le placement des cellules (en flux, avec `span` et `newRow`) et les largeurs des colonnes (minimums, puis le reste partagé selon les poids `grow`) sont des fonctions pures de `ortelia-presentation` (module `grid`), testées sans interface et sans lien avec les formulaires.
+- **Les mesures par l'interface.** Seule l'interface connaît les polices : à chaque image, elle mesure la largeur minimale de chaque cellule (textes mesurés, minimums fixes par genre de widget) et les donne à la grille, qui rend les positions et les largeurs ; l'interface dessine chaque cellule dans son rectangle. Aucune mesure n'est gardée d'une image à l'autre.
+
 ---
 
 ## 4. Choisir l'interface
